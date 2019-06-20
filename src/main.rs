@@ -8,6 +8,28 @@ use std::path::{Path, PathBuf};
 
 use failure::Fallible;
 
+// An AST expression
+enum Expr {
+    Var(String),
+    App(Box<Expr>, Box<Expr>),
+    Lambda(String, Box<Expr>),
+    Inductive(Inductive),
+}
+
+// Inductive type definition
+struct Inductive {
+    name: String,
+    params: Vec<Expr>,
+    type_: Box<Expr>,
+    variants: Vec<InductiveVariant>,
+}
+
+// Variant (branch) in an inductive type definition
+struct InductiveVariant {
+    name: String,
+    type_: Box<Expr>,
+}
+
 // Use clap crate to parse args
 fn parse_args() -> clap::ArgMatches<'static> {
     app_from_crate!()
