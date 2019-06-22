@@ -79,16 +79,13 @@ impl Term {
         }
     }
 
-    fn subst(self: &Self, binder: &str, val: &Term) -> Self {
+    fn subst(self: &Self, var: &str, val: &Term) -> Self {
         match self {
             Term::Type | Term::Prop => self.to_owned(),
-            Term::Var(name) => if name == binder { val } else { self }.to_owned(),
-            Term::App(m, n) => Term::App(
-                Box::new(m.subst(binder, val)),
-                Box::new(n.subst(binder, val)),
-            ),
-            Term::Lambda(abs) => Term::Lambda(abs.subst(binder, val)),
-            Term::ForAll(abs) => Term::ForAll(abs.subst(binder, val)),
+            Term::Var(name) => if name == var { val } else { self }.to_owned(),
+            Term::App(m, n) => Term::App(Box::new(m.subst(var, val)), Box::new(n.subst(var, val))),
+            Term::Lambda(abs) => Term::Lambda(abs.subst(var, val)),
+            Term::ForAll(abs) => Term::ForAll(abs.subst(var, val)),
         }
     }
 
