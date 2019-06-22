@@ -215,7 +215,7 @@ fn try_main() -> Fallible<()> {
     let file = File::open(path)?;
     let sexpr = lexpr::from_reader(file)?;
     let prog = Term::from_sexpr(&sexpr)?;
-    let typ = prog.get_type();
+    let typ = prog.get_type()?;
 
     println!("program: {:?}", prog);
     println!("type: {:?}", typ);
