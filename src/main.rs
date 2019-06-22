@@ -28,24 +28,35 @@ struct Abstraction {
 }
 
 impl Expr {
-    fn make_var(name: &str) -> Self {
-        Expr::Var(name.to_string())
+    fn from_symbol(sym: &str) -> Self {
+        match sym {
+            "Type" => Expr::Type,
+            "Prop" => Expr::Prop,
+            s => Expr::Var(s.to_string()),
+        }
     }
 
     fn from_sexpr_atom(atom: SexprAtom) -> Fallible<Self> {
         match atom {
-            SexprAtom::Nil => Ok(Expr::make_var("nil")),
-            SexprAtom::Bool(b) => Ok(Expr::Var(b.to_string())),
-            SexprAtom::Number(_) => bail!("numbers unsupported"),
-            SexprAtom::String(_) => bail!("strings unsupported"),
-            SexprAtom::Symbol(s) => Ok(Expr::make_var(&s)),
-            SexprAtom::Keyword(s) => Ok(Expr::make_var(&s)),
+            SexprAtom::Nil => bail!("nil unrecognized"),
+            SexprAtom::Bool(_) => bail!("bool unrecognized"),
+            SexprAtom::Number(_) => bail!("numbers unrecognized"),
+            SexprAtom::String(_) => bail!("strings unrecognized"),
+            SexprAtom::Symbol(s) => Ok(Expr::from_symbol(&s)),
+            SexprAtom::Keyword(_) => bail!("keyword unrecognized"),
         }
     }
 
     fn from_sexpr_list(list: Vec<Sexpr>) -> Fallible<Self> {
-        match list {
-            []
+        let first_sym = list
+            .first()
+            .ok_or_else(|| format_err!("empty list unrecognized"))?
+            .as_symbol()
+            .ok_or_else(|| format_err!("non-symbol first list item unrecognized"))?;
+        match first_sym {
+            "lambda" => Expr::Lambda(),
+            "forall" => Expr::ForAll(),
+            s => Expr::App(),
         }
     }
 
@@ -53,7 +64,7 @@ impl Expr {
         match prog {
             Sexpr::Atom(atom) => Expr::from_sexpr_atom(atom),
             Sexpr::List(list) => Expr::from_sexpr_list(list),
-            Sexpr::ImproperList(_, _) => bail!("improper lists unsupported"),
+            Sexpr::ImproperList(_, _) => bail!("improper lists unrecognized"),
         }
     }
 }
