@@ -243,6 +243,7 @@ fn try_main() -> Fallible<()> {
     let prog = Term::from_sexpr(&sexpr)?;
     let typ = prog.get_type()?;
 
+    println!("sexpr: {:?}");
     println!("program: {:?}", prog);
     println!("type: {:?}", typ);
 
