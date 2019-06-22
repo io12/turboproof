@@ -2,9 +2,9 @@
 extern crate clap;
 #[macro_use]
 extern crate failure;
+extern crate im;
 extern crate lexpr;
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +13,7 @@ use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
 // An AST expression
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum Term {
     Type,
     Prop,
@@ -23,7 +23,7 @@ enum Term {
     ForAll(Abstraction),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct Abstraction {
     binder: String,
     binder_type: Box<Term>,
@@ -31,7 +31,7 @@ struct Abstraction {
 }
 
 // Mapping of variables to their types
-type TypeContext = HashMap<Term, Term>;
+type TypeContext = im::ordmap::OrdMap<Term, Term>;
 
 impl Term {
     fn from_symbol(sym: &str) -> Self {
@@ -109,6 +109,37 @@ impl Term {
         }
     }
 
+    fn is_type_or_prop(self: &Self) -> bool {
+        match self {
+            Term::Type | Term::Prop => true,
+            _ => false,
+        }
+    }
+
+    fn get_lambda_type(abs: &Abstraction, ctx: &TypeContext) -> Fallible<Self> {
+        let Abstraction {
+            binder,
+            binder_type,
+            body,
+        } = abs.clone();
+
+        let ctx = ctx.update(Term::Var(binder.clone()), *binder_type.clone());
+
+        let body_type = body.get_type_with_context(&ctx)?;
+        let body_type_type = body_type.get_type_with_context(&ctx)?;
+
+        ensure!(
+            body_type_type.is_type_or_prop(),
+            "failed to type check lambda"
+        );
+
+        Ok(Term::ForAll(Abstraction {
+            binder,
+            binder_type,
+            body: Box::new(body_type),
+        }))
+    }
+
     // Type checking with a custom context
     fn get_type_with_context(self: &Self, ctx: &TypeContext) -> Fallible<Self> {
         match self {
@@ -118,14 +149,14 @@ impl Term {
                 .map(|term| term.to_owned())
                 .ok_or_else(|| format_err!("could not find binding '{}' in scope", name)),
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
-            Term::Lambda(abs) => unimplemented!(),
+            Term::Lambda(abs) => Term::get_lambda_type(abs, ctx),
             Term::ForAll(abs) => unimplemented!(),
         }
     }
 
     // Type checking
     fn get_type(self: &Self) -> Fallible<Self> {
-        let ctx = HashMap::new();
+        let ctx = TypeContext::new();
         self.get_type_with_context(&ctx)
     }
 }
