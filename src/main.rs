@@ -112,7 +112,7 @@ fn try_main() -> Fallible<()> {
     let path = get_input_path();
     let file = File::open(path)?;
     let prog = lexpr::from_reader(file)?;
-    let prog = Expr::from_sexpr(&prog);
+    let prog = Expr::from_sexpr(&prog)?;
 
     println!("{:?}", prog);
 
