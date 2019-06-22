@@ -150,7 +150,7 @@ impl Term {
                 .ok_or_else(|| format_err!("could not find binding '{}' in scope", name)),
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
             Term::Lambda(abs) => Term::get_lambda_type(abs, ctx),
-            Term::ForAll(abs) => unimplemented!(),
+            Term::ForAll(_) => Ok(Term::Prop),
         }
     }
 
