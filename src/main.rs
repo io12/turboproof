@@ -3,7 +3,12 @@ extern crate clap;
 #[macro_use]
 extern crate failure;
 extern crate lexpr;
+#[macro_use]
+extern crate maplit;
+#[macro_use]
+extern crate lazy_static;
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -13,11 +18,11 @@ use lexpr::Value as Sexpr;
 
 // An AST expression
 #[derive(Debug)]
-enum Expr {
+enum Term {
     Type,
     Prop,
     Var(String),
-    App(Box<Expr>, Box<Expr>),
+    App(Box<Term>, Box<Term>),
     Lambda(Abstraction),
     ForAll(Abstraction),
 }
@@ -25,16 +30,19 @@ enum Expr {
 #[derive(Debug)]
 struct Abstraction {
     binder: String,
-    binder_type: Box<Expr>,
-    body: Box<Expr>,
+    binder_type: Box<Term>,
+    body: Box<Term>,
 }
 
-impl Expr {
+// Mapping of variables to their types
+type TypeContext = HashMap<String, Term>;
+
+impl Term {
     fn from_symbol(sym: &str) -> Box<Self> {
         Box::new(match sym {
-            "Type" => Expr::Type,
-            "Prop" => Expr::Prop,
-            s => Expr::Var(s.to_string()),
+            "Type" => Term::Type,
+            "Prop" => Term::Prop,
+            s => Term::Var(s.to_string()),
         })
     }
 
@@ -44,7 +52,7 @@ impl Expr {
             SexprAtom::Bool(_) => bail!("bool unrecognized"),
             SexprAtom::Number(_) => bail!("numbers unrecognized"),
             SexprAtom::String(_) => bail!("strings unrecognized"),
-            SexprAtom::Symbol(s) => Ok(Expr::from_symbol(&s)),
+            SexprAtom::Symbol(s) => Ok(Term::from_symbol(&s)),
             SexprAtom::Keyword(_) => bail!("keyword unrecognized"),
         }
     }
@@ -55,12 +63,12 @@ impl Expr {
             .ok_or_else(|| format_err!("empty list unrecognized"))?;
 
         match first_sexpr.as_symbol() {
-            Some("lambda") => Ok(Box::new(Expr::Lambda(Abstraction::from_sexpr_list(list)?))),
-            Some("forall") => Ok(Box::new(Expr::ForAll(Abstraction::from_sexpr_list(list)?))),
+            Some("lambda") => Ok(Box::new(Term::Lambda(Abstraction::from_sexpr_list(list)?))),
+            Some("forall") => Ok(Box::new(Term::ForAll(Abstraction::from_sexpr_list(list)?))),
             _ => match list.as_slice() {
-                [a, b] => Ok(Box::new(Expr::App(
-                    Expr::from_sexpr(a)?,
-                    Expr::from_sexpr(b)?,
+                [a, b] => Ok(Box::new(Term::App(
+                    Term::from_sexpr(a)?,
+                    Term::from_sexpr(b)?,
                 ))),
                 _ => bail!("invalid application"),
             },
@@ -69,15 +77,26 @@ impl Expr {
 
     fn from_sexpr(prog: &Sexpr) -> Fallible<Box<Self>> {
         match prog {
-            Sexpr::Atom(atom) => Expr::from_sexpr_atom(atom),
-            Sexpr::List(list) => Expr::from_sexpr_list(list),
+            Sexpr::Atom(atom) => Term::from_sexpr_atom(atom),
+            Sexpr::List(list) => Term::from_sexpr_list(list),
             Sexpr::ImproperList(_, _) => bail!("improper lists unrecognized"),
         }
     }
 
+    fn eval_with_context(self: &Self, ctx: &TypeContext) -> Box<Self> {
+        unimplemented!()
+    }
+
     // Type checking / execution
     fn eval(self: &Self) -> Box<Self> {
-        unimplemented!()
+        lazy_static! {
+            static ref DEFAULT_CONTEXT: TypeContext = hashmap![
+                "Type".to_string() => Term::Type,
+                "Prop".to_string() => Term::Type,
+            ];
+        }
+
+        self.eval_with_context(&DEFAULT_CONTEXT)
     }
 }
 
@@ -91,8 +110,8 @@ impl Abstraction {
                     .as_symbol()
                     .ok_or_else(|| format_err!("binder in lambda is not a symbol"))?
                     .to_string(),
-                binder_type: Expr::from_sexpr(binder_type)?,
-                body: Expr::from_sexpr(body)?,
+                binder_type: Term::from_sexpr(binder_type)?,
+                body: Term::from_sexpr(body)?,
             }),
             _ => bail!("abstraction format error"),
         }
@@ -117,7 +136,7 @@ fn try_main() -> Fallible<()> {
     let path = get_input_path();
     let file = File::open(path)?;
     let sexpr = lexpr::from_reader(file)?;
-    let prog = Expr::from_sexpr(&sexpr)?;
+    let prog = Term::from_sexpr(&sexpr)?;
     let out = prog.eval();
 
     println!("{:?}", prog);
