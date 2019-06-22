@@ -143,7 +143,7 @@ impl Term {
     // Type checking with a custom context
     fn get_type_with_context(self: &Self, ctx: &TypeContext) -> Fallible<Self> {
         match self {
-            Term::Type | Term::Prop => Ok(self.to_owned()),
+            Term::Type | Term::Prop => Ok(Term::Type),
             Term::Var(name) => ctx
                 .get(self)
                 .map(|term| term.to_owned())
