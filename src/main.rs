@@ -9,6 +9,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use failure::Fallible;
+use im::ordmap::OrdMap;
 use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
@@ -30,8 +31,13 @@ struct Abstraction {
     body: Box<Term>,
 }
 
-// Mapping of variables to their types
-type TypeContext = im::ordmap::OrdMap<Term, Term>;
+#[derive(Clone)]
+struct Context {
+    // Mapping of variable names to values
+    vars: OrdMap<String, Term>,
+    // Mapping of terms to their types
+    types: OrdMap<Term, Term>,
+}
 
 impl Term {
     fn from_symbol(sym: &str) -> Self {
@@ -89,7 +95,7 @@ impl Term {
         }
     }
 
-    fn get_app_type(m: &Term, n: &Term, ctx: &TypeContext) -> Fallible<Self> {
+    fn get_app_type(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
         if let (
             Some(Term::ForAll(Abstraction {
                 binder: x,
@@ -97,7 +103,7 @@ impl Term {
                 body: b,
             })),
             Some(a_1),
-        ) = (ctx.get(m), ctx.get(n))
+        ) = (ctx.get_type(m), ctx.get_type(n))
         {
             if **a_0 == *a_1 {
                 Ok(b.subst(x, n))
@@ -109,14 +115,14 @@ impl Term {
         }
     }
 
-    fn get_lambda_type(abs: &Abstraction, ctx: &TypeContext) -> Fallible<Self> {
+    fn get_lambda_type(abs: &Abstraction, ctx: &Context) -> Fallible<Self> {
         let Abstraction {
             binder,
             binder_type,
             body,
         } = abs.clone();
 
-        let ctx = ctx.update(Term::Var(binder.clone()), *binder_type.clone());
+        let ctx = ctx.add_type(&Term::Var(binder.clone()), &*binder_type);
 
         let body_type = body.get_type_with_context(&ctx)?;
 
@@ -128,11 +134,11 @@ impl Term {
     }
 
     // Type checking with a custom context
-    fn get_type_with_context(self: &Self, ctx: &TypeContext) -> Fallible<Self> {
+    fn get_type_with_context(self: &Self, ctx: &Context) -> Fallible<Self> {
         match self {
             Term::Type | Term::Prop => Ok(Term::Type),
             Term::Var(name) => ctx
-                .get(self)
+                .get_type(self)
                 .map(|term| term.to_owned())
                 .ok_or_else(|| format_err!("could not find binding '{}' in scope", name)),
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
@@ -143,7 +149,7 @@ impl Term {
 
     // Type checking
     fn get_type(self: &Self) -> Fallible<Self> {
-        let ctx = TypeContext::new();
+        let ctx = Context::new();
         self.get_type_with_context(&ctx)
     }
 }
@@ -180,6 +186,39 @@ impl Abstraction {
                 body: Box::new(body.subst(var, val)),
             }
         }
+    }
+}
+
+impl Context {
+    fn new() -> Self {
+        Self {
+            vars: OrdMap::new(),
+            types: OrdMap::new(),
+        }
+    }
+
+    fn add_var(self: &Self, name: &str, val: &Term) -> Self {
+        let Self { vars, types } = self.to_owned();
+        Self {
+            vars: vars.update(name.to_string(), val.to_owned()),
+            types,
+        }
+    }
+
+    fn add_type(self: &Self, val: &Term, typ: &Term) -> Self {
+        let Self { vars, types } = self.to_owned();
+        Self {
+            vars,
+            types: types.update(val.to_owned(), typ.to_owned()),
+        }
+    }
+
+    fn get_var(self: &Self, name: &str) -> Option<&Term> {
+        self.vars.get(name)
+    }
+
+    fn get_type(self: &Self, val: &Term) -> Option<&Term> {
+        self.types.get(val)
     }
 }
 
