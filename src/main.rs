@@ -74,6 +74,11 @@ impl Expr {
             Sexpr::ImproperList(_, _) => bail!("improper lists unrecognized"),
         }
     }
+
+    // Type checking / execution
+    fn eval(self: &Self) -> Box<Self> {
+        unimplemented!()
+    }
 }
 
 impl Abstraction {
@@ -111,10 +116,12 @@ fn get_input_path() -> PathBuf {
 fn try_main() -> Fallible<()> {
     let path = get_input_path();
     let file = File::open(path)?;
-    let prog = lexpr::from_reader(file)?;
-    let prog = Expr::from_sexpr(&prog)?;
+    let sexpr = lexpr::from_reader(file)?;
+    let prog = Expr::from_sexpr(&sexpr)?;
+    let out = prog.eval();
 
     println!("{:?}", prog);
+    println!("{:?}", out);
 
     Ok(())
 }
