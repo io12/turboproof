@@ -109,13 +109,6 @@ impl Term {
         }
     }
 
-    fn is_type_or_prop(self: &Self) -> bool {
-        match self {
-            Term::Type | Term::Prop => true,
-            _ => false,
-        }
-    }
-
     fn get_lambda_type(abs: &Abstraction, ctx: &TypeContext) -> Fallible<Self> {
         let Abstraction {
             binder,
@@ -126,12 +119,6 @@ impl Term {
         let ctx = ctx.update(Term::Var(binder.clone()), *binder_type.clone());
 
         let body_type = body.get_type_with_context(&ctx)?;
-        let body_type_type = body_type.get_type_with_context(&ctx)?;
-
-        ensure!(
-            body_type_type.is_type_or_prop(),
-            "failed to type check lambda"
-        );
 
         Ok(Term::ForAll(Abstraction {
             binder,
