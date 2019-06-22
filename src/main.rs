@@ -79,16 +79,16 @@ impl Term {
         }
     }
 
-    fn substitute_binder(self: &Self, binder: &str, val: &Term) -> Self {
+    fn subst(self: &Self, binder: &str, val: &Term) -> Self {
         match self {
             Term::Type | Term::Prop => self.to_owned(),
             Term::Var(name) => if name == binder { val } else { self }.to_owned(),
             Term::App(m, n) => Term::App(
-                Box::new(m.substitute_binder(binder, val)),
-                Box::new(n.substitute_binder(binder, val)),
+                Box::new(m.subst(binder, val)),
+                Box::new(n.subst(binder, val)),
             ),
-            Term::Lambda(abs) => unimplemented!(),
-            Term::ForAll(abs) => unimplemented!(),
+            Term::Lambda(abs) => Term::Lambda(abs.subst(binder, val)),
+            Term::ForAll(abs) => Term::ForAll(abs.subst(binder, val)),
         }
     }
 
@@ -102,8 +102,8 @@ impl Term {
             Some(a_1),
         ) = (ctx.get(m), ctx.get(n))
         {
-            if *a_0 == *a_1 {
-                Ok(b.substitute_binder(x, n))
+            if **a_0 == *a_1 {
+                Ok(b.subst(x, n))
             } else {
                 Err(format_err!("invalid application"))
             }
@@ -147,6 +147,23 @@ impl Abstraction {
                 body: Box::new(Term::from_sexpr(body)?),
             }),
             _ => bail!("abstraction format error"),
+        }
+    }
+
+    fn subst(self: &Self, var: &str, val: &Term) -> Self {
+        if self.binder == var {
+            self.to_owned()
+        } else {
+            let Self {
+                binder,
+                binder_type,
+                body,
+            } = self.to_owned();
+            Self {
+                binder,
+                binder_type,
+                body: Box::new(body.subst(var, val)),
+            }
         }
     }
 }
