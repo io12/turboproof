@@ -3,10 +3,6 @@ extern crate clap;
 #[macro_use]
 extern crate failure;
 extern crate lexpr;
-#[macro_use]
-extern crate maplit;
-#[macro_use]
-extern crate lazy_static;
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -17,7 +13,7 @@ use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
 // An AST expression
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Term {
     Type,
     Prop,
@@ -27,7 +23,7 @@ enum Term {
     ForAll(Abstraction),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Abstraction {
     binder: String,
     binder_type: Box<Term>,
@@ -35,18 +31,18 @@ struct Abstraction {
 }
 
 // Mapping of variables to their types
-type TypeContext = HashMap<String, Term>;
+type TypeContext = HashMap<Term, Term>;
 
 impl Term {
-    fn from_symbol(sym: &str) -> Box<Self> {
-        Box::new(match sym {
+    fn from_symbol(sym: &str) -> Self {
+        match sym {
             "Type" => Term::Type,
             "Prop" => Term::Prop,
             s => Term::Var(s.to_string()),
-        })
+        }
     }
 
-    fn from_sexpr_atom(atom: &SexprAtom) -> Fallible<Box<Self>> {
+    fn from_sexpr_atom(atom: &SexprAtom) -> Fallible<Self> {
         match atom {
             SexprAtom::Nil => bail!("nil unrecognized"),
             SexprAtom::Bool(_) => bail!("bool unrecognized"),
@@ -57,25 +53,25 @@ impl Term {
         }
     }
 
-    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Box<Self>> {
+    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
         let first_sexpr = list
             .first()
             .ok_or_else(|| format_err!("empty list unrecognized"))?;
 
         match first_sexpr.as_symbol() {
-            Some("lambda") => Ok(Box::new(Term::Lambda(Abstraction::from_sexpr_list(list)?))),
-            Some("forall") => Ok(Box::new(Term::ForAll(Abstraction::from_sexpr_list(list)?))),
+            Some("lambda") => Ok(Term::Lambda(Abstraction::from_sexpr_list(list)?)),
+            Some("forall") => Ok(Term::ForAll(Abstraction::from_sexpr_list(list)?)),
             _ => match list.as_slice() {
-                [a, b] => Ok(Box::new(Term::App(
-                    Term::from_sexpr(a)?,
-                    Term::from_sexpr(b)?,
-                ))),
+                [a, b] => Ok(Term::App(
+                    Box::new(Term::from_sexpr(a)?),
+                    Box::new(Term::from_sexpr(b)?),
+                )),
                 _ => bail!("invalid application"),
             },
         }
     }
 
-    fn from_sexpr(prog: &Sexpr) -> Fallible<Box<Self>> {
+    fn from_sexpr(prog: &Sexpr) -> Fallible<Self> {
         match prog {
             Sexpr::Atom(atom) => Term::from_sexpr_atom(atom),
             Sexpr::List(list) => Term::from_sexpr_list(list),
@@ -83,32 +79,57 @@ impl Term {
         }
     }
 
-    // Type checking with a custom context
-    fn get_type_with_context(self: &Self, ctx: &TypeContext) -> Fallible<Box<Self>> {
+    fn substitute_binder(self: &Self, binder: &str, val: &Term) -> Self {
         match self {
-            Term::Type => Ok(Box::new(Term::Type)),
-            Term::Prop => Ok(Box::new(Term::Type)),
+            Term::Type | Term::Prop => self.to_owned(),
+            Term::Var(name) => if name == binder { val } else { self }.to_owned(),
+            Term::App(m, n) => Term::App(
+                Box::new(m.substitute_binder(binder, val)),
+                Box::new(n.substitute_binder(binder, val)),
+            ),
+            Term::Lambda(abs) => unimplemented!(),
+            Term::ForAll(abs) => unimplemented!(),
+        }
+    }
+
+    fn get_app_type(m: &Term, n: &Term, ctx: &TypeContext) -> Fallible<Self> {
+        if let (
+            Some(Term::ForAll(Abstraction {
+                binder: x,
+                binder_type: a_0,
+                body: b,
+            })),
+            Some(a_1),
+        ) = (ctx.get(m), ctx.get(n))
+        {
+            if *a_0 == *a_1 {
+                Ok(b.substitute_binder(x, n))
+            } else {
+                Err(format_err!("invalid application"))
+            }
+        } else {
+            Err(format_err!("invalid application"))
+        }
+    }
+
+    // Type checking with a custom context
+    fn get_type_with_context(self: &Self, ctx: &TypeContext) -> Fallible<Self> {
+        match self {
+            Term::Type | Term::Prop => Ok(self.to_owned()),
             Term::Var(name) => ctx
-                .get(name)
-                .map(|term| Box::new(term.to_owned()))
-                .ok_or_else(|| format_err!("{} was not found in context", name)),
-            Term::App(a, b) => unimplemented!(),
+                .get(self)
+                .map(|term| term.to_owned())
+                .ok_or_else(|| format_err!("could not find binding '{}' in scope", name)),
+            Term::App(m, n) => Term::get_app_type(m, n, ctx),
             Term::Lambda(abs) => unimplemented!(),
             Term::ForAll(abs) => unimplemented!(),
         }
     }
 
     // Type checking
-    fn get_type(self: &Self) -> Fallible<Box<Self>> {
-        // TODO: this is probably useless and bad
-        lazy_static! {
-            static ref DEFAULT_CONTEXT: TypeContext = hashmap![
-                "Type".to_string() => Term::Type,
-                "Prop".to_string() => Term::Type,
-            ];
-        }
-
-        self.get_type_with_context(&DEFAULT_CONTEXT)
+    fn get_type(self: &Self) -> Fallible<Self> {
+        let ctx = HashMap::new();
+        self.get_type_with_context(&ctx)
     }
 }
 
@@ -122,8 +143,8 @@ impl Abstraction {
                     .as_symbol()
                     .ok_or_else(|| format_err!("binder in lambda is not a symbol"))?
                     .to_string(),
-                binder_type: Term::from_sexpr(binder_type)?,
-                body: Term::from_sexpr(body)?,
+                binder_type: Box::new(Term::from_sexpr(binder_type)?),
+                body: Box::new(Term::from_sexpr(body)?),
             }),
             _ => bail!("abstraction format error"),
         }
