@@ -28,15 +28,15 @@ struct Abstraction {
 }
 
 impl Expr {
-    fn from_symbol(sym: &str) -> Self {
-        match sym {
+    fn from_symbol(sym: &str) -> Box<Self> {
+        Box::new(match sym {
             "Type" => Expr::Type,
             "Prop" => Expr::Prop,
             s => Expr::Var(s.to_string()),
-        }
+        })
     }
 
-    fn from_sexpr_atom(atom: &SexprAtom) -> Fallible<Self> {
+    fn from_sexpr_atom(atom: &SexprAtom) -> Fallible<Box<Self>> {
         match atom {
             SexprAtom::Nil => bail!("nil unrecognized"),
             SexprAtom::Bool(_) => bail!("bool unrecognized"),
@@ -47,25 +47,28 @@ impl Expr {
         }
     }
 
-    fn from_sexpr_list(list: Vec<Sexpr>) -> Fallible<Self> {
-        let first_sym = list
+    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Box<Self>> {
+        let first_sexpr = list
             .first()
-            .ok_or_else(|| format_err!("empty list unrecognized"))?
-            .as_symbol()
-            .ok_or_else(|| format_err!("non-symbol first list item unrecognized"))?;
-        let expr = match first_sym {
-            "lambda" => Expr::Lambda(Abstraction::from_sexpr_list(list)?),
-            "forall" => Expr::ForAll(Abstraction::from_sexpr_list(list)?),
-            s => Expr::App(),
-        };
+            .ok_or_else(|| format_err!("empty list unrecognized"))?;
 
-        Ok(expr)
+        match first_sexpr.as_symbol() {
+            Some("lambda") => Ok(Box::new(Expr::Lambda(Abstraction::from_sexpr_list(list)?))),
+            Some("forall") => Ok(Box::new(Expr::ForAll(Abstraction::from_sexpr_list(list)?))),
+            _ => match list.as_slice() {
+                [a, b] => Ok(Box::new(Expr::App(
+                    Expr::from_sexpr(a)?,
+                    Expr::from_sexpr(b)?,
+                ))),
+                _ => bail!("invalid application"),
+            },
+        }
     }
 
-    fn from_sexpr(prog: &Sexpr) -> Fallible<Self> {
+    fn from_sexpr(prog: &Sexpr) -> Fallible<Box<Self>> {
         match prog {
             Sexpr::Atom(atom) => Expr::from_sexpr_atom(atom),
-            Sexpr::List(list) => Expr::from_sexpr_list(*list),
+            Sexpr::List(list) => Expr::from_sexpr_list(list),
             Sexpr::ImproperList(_, _) => bail!("improper lists unrecognized"),
         }
     }
@@ -74,15 +77,15 @@ impl Expr {
 impl Abstraction {
     // Parse list of form (abstraction_type binder binder_type body)
     // TODO: refactor
-    fn from_sexpr_list(list: Vec<Sexpr>) -> Fallible<Self> {
+    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
         match list.as_slice() {
             [_, binder, binder_type, body] => Ok(Self {
                 binder: binder
                     .as_symbol()
                     .ok_or_else(|| format_err!("binder in lambda is not a symbol"))?
                     .to_string(),
-                binder_type: Box::new(Expr::from_sexpr(binder_type)?),
-                body: Box::new(Expr::from_sexpr(body)?),
+                binder_type: Expr::from_sexpr(binder_type)?,
+                body: Expr::from_sexpr(body)?,
             }),
             _ => bail!("abstraction format error"),
         }
