@@ -12,6 +12,7 @@ use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
 // An AST expression
+#[derive(Debug)]
 enum Expr {
     Type,
     Prop,
@@ -21,6 +22,7 @@ enum Expr {
     ForAll(Abstraction),
 }
 
+#[derive(Debug)]
 struct Abstraction {
     binder: String,
     binder_type: Box<Expr>,
@@ -110,6 +112,7 @@ fn try_main() -> Fallible<()> {
     let path = get_input_path();
     let file = File::open(path)?;
     let prog = lexpr::from_reader(file)?;
+    let prog = Expr::from_sexpr(&prog);
 
     println!("{:?}", prog);
 
