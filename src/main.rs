@@ -84,7 +84,14 @@ impl Term {
     }
 
     fn eval_with_context(self: &Self, ctx: &TypeContext) -> Box<Self> {
-        unimplemented!()
+        match self {
+            Term::Type => Box::new(Term::Type),
+            Term::Prop => Box::new(Term::Prop),
+            Term::Var(name) => unimplemented!(),
+            Term::App(a, b) => unimplemented!(),
+            Term::Lambda(abs) => unimplemented!(),
+            Term::ForAll(abs) => unimplemented!(),
+        }
     }
 
     // Type checking / execution
