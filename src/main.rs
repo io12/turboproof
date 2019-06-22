@@ -17,7 +17,7 @@ use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
 // An AST expression
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Term {
     Type,
     Prop,
@@ -27,7 +27,7 @@ enum Term {
     ForAll(Abstraction),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Abstraction {
     binder: String,
     binder_type: Box<Term>,
@@ -83,19 +83,24 @@ impl Term {
         }
     }
 
-    fn eval_with_context(self: &Self, ctx: &TypeContext) -> Box<Self> {
+    // Type checking with a custom context
+    fn get_type_with_context(self: &Self, ctx: &TypeContext) -> Fallible<Box<Self>> {
         match self {
-            Term::Type => Box::new(Term::Type),
-            Term::Prop => Box::new(Term::Prop),
-            Term::Var(name) => unimplemented!(),
+            Term::Type => Ok(Box::new(Term::Type)),
+            Term::Prop => Ok(Box::new(Term::Type)),
+            Term::Var(name) => ctx
+                .get(name)
+                .map(|term| Box::new(term.to_owned()))
+                .ok_or_else(|| format_err!("{} was not found in context", name)),
             Term::App(a, b) => unimplemented!(),
             Term::Lambda(abs) => unimplemented!(),
             Term::ForAll(abs) => unimplemented!(),
         }
     }
 
-    // Type checking / execution
-    fn eval(self: &Self) -> Box<Self> {
+    // Type checking
+    fn get_type(self: &Self) -> Fallible<Box<Self>> {
+        // TODO: this is probably useless and bad
         lazy_static! {
             static ref DEFAULT_CONTEXT: TypeContext = hashmap![
                 "Type".to_string() => Term::Type,
@@ -103,7 +108,7 @@ impl Term {
             ];
         }
 
-        self.eval_with_context(&DEFAULT_CONTEXT)
+        self.get_type_with_context(&DEFAULT_CONTEXT)
     }
 }
 
@@ -144,10 +149,10 @@ fn try_main() -> Fallible<()> {
     let file = File::open(path)?;
     let sexpr = lexpr::from_reader(file)?;
     let prog = Term::from_sexpr(&sexpr)?;
-    let out = prog.eval();
+    let typ = prog.get_type();
 
-    println!("{:?}", prog);
-    println!("{:?}", out);
+    println!("program: {:?}", prog);
+    println!("type: {:?}", typ);
 
     Ok(())
 }
