@@ -138,8 +138,14 @@ impl Directive {
         typ: &Term,
         ctx: &Context,
     ) -> Fallible<Context> {
-        if val.get_type(ctx)? != *typ {
-            bail!("type disagreement");
+        let left = val.get_type(ctx)?;
+        let right = typ.to_owned();
+        if left != right {
+            bail!(
+                "type disagreement\n  left: {:#?}\n  right: {:#?}",
+                left,
+                right
+            );
         }
 
         Ok(ctx.add_var(name, val))
