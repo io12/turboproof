@@ -138,8 +138,8 @@ impl Directive {
         typ: &Term,
         ctx: &Context,
     ) -> Fallible<Context> {
-        let left = val.get_type(ctx)?;
-        let right = typ.to_owned();
+        let left = val.get_type(ctx)?.beta_reduce(ctx)?;
+        let right = typ.beta_reduce(ctx)?;
         if left != right {
             bail!(
                 "type disagreement\n  left: {:#?}\n  right: {:#?}",
