@@ -288,10 +288,10 @@ impl Term {
         .beta_reduce(ctx)
     }
 
-    fn beta_reduce_var(name: &str, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce_var(name: &str, ctx: &Context) -> Self {
         ctx.get_var(name)
-            .ok_or_else(|| format_err!("unbound variable in beta-reduction '{}'", name))
             .map(|term| term.to_owned())
+            .unwrap_or(Term::Var(name.to_string()))
     }
 
     fn beta_reduce_app(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
@@ -313,7 +313,7 @@ impl Term {
     fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
         match self {
             Term::Type | Term::Prop => Ok(self.to_owned()),
-            Term::Var(name) => Term::beta_reduce_var(name, ctx),
+            Term::Var(name) => Ok(Term::beta_reduce_var(name, ctx)),
             Term::App(m, n) => Term::beta_reduce_app(m, n, ctx),
             Term::Lambda(abs) => Ok(Term::Lambda(abs.beta_reduce(ctx)?)),
             Term::ForAll(abs) => Ok(Term::ForAll(abs.beta_reduce(ctx)?)),
