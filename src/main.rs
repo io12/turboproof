@@ -57,6 +57,12 @@ impl Ast {
                 .collect::<Fallible<Vec<_>>>()?,
         })
     }
+
+    fn eval(self: &Self) {
+        for direct in self.directives.iter() {
+            direct.eval();
+        }
+    }
 }
 
 impl Directive {
@@ -104,6 +110,20 @@ impl Directive {
         match sexpr {
             Sexpr::List(list) => Directive::from_sexpr_list(list),
             _ => bail!("expected directive but did not get list"),
+        }
+    }
+
+    fn eval_check(term: &Term) {
+        match term.get_type() {
+            Ok(typ) => println!("type: {:?}", typ),
+            Err(err) => println!("type checking error: {}", err),
+        }
+    }
+
+    fn eval(self: &Self) {
+        match self {
+            Directive::Define(_, _) => unimplemented!(),
+            Directive::Check(term) => Directive::eval_check(term),
         }
     }
 }
@@ -328,6 +348,8 @@ fn try_main() -> Fallible<()> {
 
     let prog = Ast::from_sexprs(&sexprs)?;
     println!("program: {:?}", prog);
+
+    prog.eval();
 
     Ok(())
 }
