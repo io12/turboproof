@@ -146,7 +146,7 @@ impl Directive {
     }
 
     fn eval_check(term: &Term, ctx: &Context) -> Fallible<()> {
-        println!("type: {:?}", term.get_type(ctx)?);
+        println!("type: {:#?}", term.get_type(ctx)?);
         Ok(())
     }
 
