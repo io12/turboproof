@@ -59,9 +59,9 @@ impl Ast {
     }
 
     fn eval(self: &Self) {
-        for direct in self.directives.iter() {
-            direct.eval();
-        }
+        self.directives
+            .iter()
+            .fold(Context::new(), |ctx, direct| direct.eval(&ctx));
     }
 }
 
@@ -113,17 +113,20 @@ impl Directive {
         }
     }
 
-    fn eval_check(term: &Term) {
-        match term.get_type() {
+    fn eval_check(term: &Term, ctx: &Context) {
+        match term.get_type(ctx) {
             Ok(typ) => println!("type: {:?}", typ),
             Err(err) => println!("type checking error: {}", err),
         }
     }
 
-    fn eval(self: &Self) {
+    fn eval(self: &Self, ctx: &Context) -> Context {
         match self {
-            Directive::Define(_, _) => unimplemented!(),
-            Directive::Check(term) => Directive::eval_check(term),
+            Directive::Define(name, val) => ctx.add_var(name, val),
+            Directive::Check(term) => {
+                Directive::eval_check(term, ctx);
+                ctx.to_owned()
+            }
         }
     }
 }
@@ -213,7 +216,7 @@ impl Term {
 
         let ctx = ctx.add_type(&Term::Var(binder.clone()), &*binder_type);
 
-        let body_type = body.get_type_with_context(&ctx)?;
+        let body_type = body.get_type(&ctx)?;
 
         Ok(Term::ForAll(Abstraction {
             binder,
@@ -222,8 +225,8 @@ impl Term {
         }))
     }
 
-    // Type checking with a custom context
-    fn get_type_with_context(self: &Self, ctx: &Context) -> Fallible<Self> {
+    // Type checking
+    fn get_type(self: &Self, ctx: &Context) -> Fallible<Self> {
         match self {
             Term::Type | Term::Prop => Ok(Term::Type),
             Term::Var(name) => ctx
@@ -234,12 +237,6 @@ impl Term {
             Term::Lambda(abs) => Term::get_lambda_type(abs, ctx),
             Term::ForAll(_) => Ok(Term::Prop),
         }
-    }
-
-    // Type checking
-    fn get_type(self: &Self) -> Fallible<Self> {
-        let ctx = Context::new();
-        self.get_type_with_context(&ctx)
     }
 }
 
