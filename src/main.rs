@@ -258,14 +258,23 @@ impl Term {
         }))
     }
 
+    fn get_var_type(name: &str, ctx: &Context) -> Fallible<Self> {
+        let maybe_type = ctx.get_type(&Term::Var(name.to_string()));
+
+        match maybe_type {
+            Some(typ) => Ok(typ.to_owned()),
+            None => ctx
+                .get_var(name)
+                .ok_or_else(|| format_err!("could not find binding '{}' in scope", name))?
+                .get_type(ctx),
+        }
+    }
+
     // Type checking
     fn get_type(self: &Self, ctx: &Context) -> Fallible<Self> {
         match self {
             Term::Type | Term::Prop => Ok(Term::Type),
-            Term::Var(name) => ctx
-                .get_var(name)
-                .ok_or_else(|| format_err!("could not find binding '{}' in scope", name))?
-                .get_type(ctx),
+            Term::Var(name) => Term::get_var_type(name, ctx),
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
             Term::Lambda(abs) => Term::get_lambda_type(abs, ctx),
             Term::ForAll(_) => Ok(Term::Prop),
