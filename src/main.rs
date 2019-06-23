@@ -239,12 +239,14 @@ fn get_input_path() -> PathBuf {
 fn try_main() -> Fallible<()> {
     let path = get_input_path();
     let file = File::open(path)?;
-    let sexpr = lexpr::from_reader(file)?;
-    let prog = Term::from_sexpr(&sexpr)?;
-    let typ = prog.get_type()?;
 
+    let sexpr = lexpr::from_reader(file)?;
     println!("sexpr: {:?}", sexpr);
+
+    let prog = Term::from_sexpr(&sexpr)?;
     println!("program: {:?}", prog);
+
+    let typ = prog.get_type()?;
     println!("type: {:?}", typ);
 
     Ok(())
