@@ -3,7 +3,7 @@
 	       (forall x A B))))
 
 (Define ~ (lambda A Prop
-	    (forall C Prop (=> A C))))
+	    (forall C Prop ((=> A) C))))
 
 (Define impl_self
   (forall A Prop ((=> A) A)))
