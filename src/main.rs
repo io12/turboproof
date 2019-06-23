@@ -40,7 +40,7 @@ struct Abstraction {
     body: Box<Term>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Context {
     // Mapping of variable names to values
     vars: OrdMap<String, Term>,
@@ -230,7 +230,7 @@ impl Term {
         match self {
             Term::Type | Term::Prop => Ok(Term::Type),
             Term::Var(name) => ctx
-                .get_type(self)
+                .get_var(name)
                 .map(|term| term.to_owned())
                 .ok_or_else(|| format_err!("could not find binding '{}' in scope", name)),
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
