@@ -284,7 +284,8 @@ impl Term {
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
             Term::Lambda(abs) => Term::get_lambda_type(abs, ctx),
             Term::ForAll(_) => Ok(Term::Prop),
-        }
+        }?
+        .beta_reduce(ctx)
     }
 
     fn beta_reduce_var(name: &str, ctx: &Context) -> Fallible<Self> {
