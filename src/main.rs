@@ -5,7 +5,6 @@ extern crate failure;
 extern crate im;
 extern crate lexpr;
 
-use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use failure::Fallible;
@@ -13,7 +12,16 @@ use im::ordmap::OrdMap;
 use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
-// An AST expression
+#[derive(Debug)]
+struct Ast {
+    directives: Vec<Directive>,
+}
+
+#[derive(Debug)]
+enum Directive {
+    Define(String, Term),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum Term {
     Type,
@@ -37,6 +45,45 @@ struct Context {
     vars: OrdMap<String, Term>,
     // Mapping of terms to their types
     types: OrdMap<Term, Term>,
+}
+
+impl Ast {
+    fn from_sexprs(sexprs: &Vec<Sexpr>) -> Fallible<Self> {
+        Ok(Self {
+            directives: sexprs
+                .iter()
+                .map(|exp| Directive::from_sexpr(exp))
+                .collect::<Fallible<Vec<_>>>()?,
+        })
+    }
+}
+
+impl Directive {
+    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+        match list.as_slice() {
+            [define, name, val] => {
+                ensure!(
+                    define.as_symbol() == Some("define"),
+                    "unrecognized directive"
+                );
+
+                let name = name
+                    .as_symbol()
+                    .ok_or_else(|| format_err!("defined name must be a symbol"))?;
+                let val = Term::from_sexpr(val)?;
+
+                Ok(Directive::Define(name.to_string(), val))
+            }
+            _ => bail!("unrecognized directive"),
+        }
+    }
+
+    fn from_sexpr(sexpr: &Sexpr) -> Fallible<Self> {
+        match sexpr {
+            Sexpr::List(list) => Directive::from_sexpr_list(list),
+            _ => bail!("expected directive but did not get list"),
+        }
+    }
 }
 
 impl Term {
@@ -236,18 +283,29 @@ fn get_input_path() -> PathBuf {
     Path::new(path).to_path_buf()
 }
 
+fn unwrap_sexpr_list(sexpr: Sexpr) -> Vec<Sexpr> {
+    match sexpr {
+        Sexpr::List(sexprs) => sexprs,
+        _ => panic!("expected sexpr list"),
+    }
+}
+
 fn try_main() -> Fallible<()> {
     let path = get_input_path();
-    let file = File::open(path)?;
 
-    let sexpr = lexpr::from_reader(file)?;
-    println!("sexpr: {:?}", sexpr);
+    let code = std::fs::read_to_string(path)?;
+    println!("code: {:?}", code);
 
-    let prog = Term::from_sexpr(&sexpr)?;
+    // Surround code with parens so there is a list of directives at
+    // the top level
+    let code = format!("( {} )", code);
+
+    let sexprs = lexpr::from_str(&code)?;
+    let sexprs = unwrap_sexpr_list(sexprs);
+    println!("sexprs: {:?}", sexprs);
+
+    let prog = Ast::from_sexprs(&sexprs)?;
     println!("program: {:?}", prog);
-
-    let typ = prog.get_type()?;
-    println!("type: {:?}", typ);
 
     Ok(())
 }
