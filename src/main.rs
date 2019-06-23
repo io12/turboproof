@@ -264,8 +264,8 @@ impl Term {
             Term::Type | Term::Prop => Ok(Term::Type),
             Term::Var(name) => ctx
                 .get_var(name)
-                .map(|term| term.to_owned())
-                .ok_or_else(|| format_err!("could not find binding '{}' in scope", name)),
+                .ok_or_else(|| format_err!("could not find binding '{}' in scope", name))?
+                .get_type(ctx),
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
             Term::Lambda(abs) => Term::get_lambda_type(abs, ctx),
             Term::ForAll(_) => Ok(Term::Prop),
