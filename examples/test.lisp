@@ -1,6 +1,9 @@
-(Define => (lambda A Type
-	     (lambda B Type
+(Define => (lambda A Prop
+	     (lambda B Prop
 	       (forall x A B))))
+
+(Define ~ (lambda A Prop
+	    (forall C Prop (=> A C))))
 
 (Define impl_self
   (forall A Prop ((=> A) A)))
