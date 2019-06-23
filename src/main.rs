@@ -20,6 +20,7 @@ struct Ast {
 #[derive(Debug)]
 enum Directive {
     Define(String, Term),
+    Check(Term),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -59,22 +60,43 @@ impl Ast {
 }
 
 impl Directive {
-    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+    // TODO: remove this boilerplate somehow
+    fn define_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
         match list.as_slice() {
-            [define, name, val] => {
-                ensure!(
-                    define.as_symbol() == Some("define"),
-                    "unrecognized directive"
-                );
-
+            [_, name, val] => {
                 let name = name
                     .as_symbol()
-                    .ok_or_else(|| format_err!("defined name must be a symbol"))?;
+                    .ok_or_else(|| format_err!("name in define directive is not a symbol"))?
+                    .to_string();
                 let val = Term::from_sexpr(val)?;
-
-                Ok(Directive::Define(name.to_string(), val))
+                Ok(Directive::Define(name, val))
             }
-            _ => bail!("unrecognized directive"),
+            _ => bail!("define directive needs 2 parameters"),
+        }
+    }
+
+    // TODO: remove this boilerplate somehow
+    fn check_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+        match list.as_slice() {
+            [_, term] => {
+                let term = Term::from_sexpr(term)?;
+                Ok(Directive::Check(term))
+            }
+            _ => bail!("check directive needs 1 parameter"),
+        }
+    }
+
+    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+        let first_sym = list
+            .first()
+            .ok_or_else(|| format_err!("directive is an empty list"))?
+            .as_symbol()
+            .ok_or_else(|| format_err!("first item of directive is not a symbol"))?;
+
+        match first_sym {
+            "Define" => Directive::define_from_sexpr_list(list),
+            "Check" => Directive::check_from_sexpr_list(list),
+            _ => bail!("unknown directive '{}'", first_sym),
         }
     }
 
