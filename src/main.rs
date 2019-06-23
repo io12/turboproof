@@ -286,6 +286,22 @@ impl Term {
             Term::ForAll(_) => Ok(Term::Prop),
         }
     }
+
+    // Beta-reduction of terms
+    /*
+    fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
+        match self {
+            Term::Type | Term::Prop => Ok(*self),
+            Term::Var(name) => ctx
+                .get_var(name)
+                .ok_or_else(|| format_err!("unbound variable in beta-reduction '{}'", name))
+                .map(|term| term.to_owned()),
+            Term::App(m, n) =>,
+            Term::Lambda(abs) =>,
+            Term::ForAll(_) => Ok(Term::Prop),
+        }
+    }
+    */
 }
 
 impl Abstraction {
