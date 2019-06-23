@@ -287,21 +287,37 @@ impl Term {
         }
     }
 
-    // Beta-reduction of terms
-    /*
-    fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
-        match self {
-            Term::Type | Term::Prop => Ok(*self),
-            Term::Var(name) => ctx
-                .get_var(name)
-                .ok_or_else(|| format_err!("unbound variable in beta-reduction '{}'", name))
-                .map(|term| term.to_owned()),
-            Term::App(m, n) =>,
-            Term::Lambda(abs) =>,
-            Term::ForAll(_) => Ok(Term::Prop),
+    fn beta_reduce_var(name: &str, ctx: &Context) -> Fallible<Self> {
+        ctx.get_var(name)
+            .ok_or_else(|| format_err!("unbound variable in beta-reduction '{}'", name))
+            .map(|term| term.to_owned())
+    }
+
+    fn beta_reduce_app(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
+        if let Term::Lambda(Abstraction {
+            binder,
+            binder_type,
+            body,
+        }) = m
+        {
+            body.subst(binder, n).beta_reduce(ctx)
+        } else {
+            let (m, n) = (m.to_owned(), n.to_owned());
+            let (m, n) = (Box::new(m), Box::new(n));
+            Ok(Term::App(m, n))
         }
     }
-    */
+
+    // Beta-reduction of terms
+    fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
+        match self {
+            Term::Type | Term::Prop => Ok(self.to_owned()),
+            Term::Var(name) => Term::beta_reduce_var(name, ctx),
+            Term::App(m, n) => Term::beta_reduce_app(m, n, ctx),
+            Term::Lambda(abs) => Ok(Term::Lambda(abs.beta_reduce(ctx)?)),
+            Term::ForAll(abs) => Ok(Term::ForAll(abs.beta_reduce(ctx)?)),
+        }
+    }
 }
 
 impl Abstraction {
@@ -336,6 +352,20 @@ impl Abstraction {
                 body: Box::new(body.subst(var, val)),
             }
         }
+    }
+
+    fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
+        let Self {
+            binder,
+            binder_type,
+            body,
+        } = self.to_owned();
+
+        Ok(Self {
+            binder,
+            binder_type,
+            body: Box::new(body.beta_reduce(ctx)?),
+        })
     }
 }
 
