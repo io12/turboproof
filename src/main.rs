@@ -20,6 +20,7 @@ struct Ast {
 #[derive(Debug)]
 enum Directive {
     Define(String, Term),
+    DefineWithType(String, Term, Term),
     Check(Term),
 }
 
@@ -58,27 +59,45 @@ impl Ast {
         })
     }
 
-    fn eval(self: &Self) {
+    // TODO: make this clearer
+    fn eval(self: &Self) -> Fallible<()> {
         self.directives
             .iter()
-            .fold(Context::new(), |ctx, direct| direct.eval(&ctx));
+            .fold(Ok(Context::new()), |ctx, direct| match ctx {
+                Ok(ctx) => direct.eval(&ctx),
+                err => err,
+            })
+            .map(|_| ())
     }
 }
 
 impl Directive {
     // TODO: remove this boilerplate somehow
+    // (Define name val [type])
     fn define_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
-        match list.as_slice() {
-            [_, name, val] => {
-                let name = name
-                    .as_symbol()
-                    .ok_or_else(|| format_err!("name in define directive is not a symbol"))?
-                    .to_string();
-                let val = Term::from_sexpr(val)?;
-                Ok(Directive::Define(name, val))
-            }
-            _ => bail!("define directive needs 2 parameters"),
-        }
+        ensure!(
+            list.len() == 3 || list.len() == 4,
+            "define directive has incorrect amount of parameters"
+        );
+
+        let name = list
+            .get(1)
+            .ok_or_else(|| format_err!("define directive has no name"))?
+            .as_symbol()
+            .ok_or_else(|| format_err!("name in define directive is not a symbol"))?
+            .to_string();
+
+        let val = list
+            .get(2)
+            .ok_or_else(|| format_err!("define directive has no value"))
+            .and_then(|val| Term::from_sexpr(val))?;
+
+        let maybe_type = list.get(3).and_then(|typ| Term::from_sexpr(typ).ok());
+
+        Ok(match maybe_type {
+            Some(typ) => Directive::DefineWithType(name, val, typ),
+            None => Directive::Define(name, val),
+        })
     }
 
     // TODO: remove this boilerplate somehow
@@ -113,19 +132,33 @@ impl Directive {
         }
     }
 
-    fn eval_check(term: &Term, ctx: &Context) {
-        match term.get_type(ctx) {
-            Ok(typ) => println!("type: {:?}", typ),
-            Err(err) => println!("type checking error: {}", err),
+    fn eval_define_with_type(
+        name: &str,
+        val: &Term,
+        typ: &Term,
+        ctx: &Context,
+    ) -> Fallible<Context> {
+        if val.get_type(ctx)? != *typ {
+            bail!("type disagreement");
         }
+
+        Ok(ctx.add_var(name, val))
     }
 
-    fn eval(self: &Self, ctx: &Context) -> Context {
+    fn eval_check(term: &Term, ctx: &Context) -> Fallible<()> {
+        println!("type: {:?}", term.get_type(ctx)?);
+        Ok(())
+    }
+
+    fn eval(self: &Self, ctx: &Context) -> Fallible<Context> {
         match self {
-            Directive::Define(name, val) => ctx.add_var(name, val),
+            Directive::Define(name, val) => Ok(ctx.add_var(name, val)),
+            Directive::DefineWithType(name, val, typ) => {
+                Directive::eval_define_with_type(name, val, typ, ctx)
+            }
             Directive::Check(term) => {
-                Directive::eval_check(term, ctx);
-                ctx.to_owned()
+                Directive::eval_check(term, ctx)?;
+                Ok(ctx.to_owned())
             }
         }
     }
@@ -343,9 +376,7 @@ fn try_main() -> Fallible<()> {
 
     let prog = Ast::from_sexprs(&sexprs)?;
 
-    prog.eval();
-
-    Ok(())
+    prog.eval()
 }
 
 // Wrapper of `try_main()` to handle propagated errors
