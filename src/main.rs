@@ -333,7 +333,6 @@ fn try_main() -> Fallible<()> {
     let path = get_input_path();
 
     let code = std::fs::read_to_string(path)?;
-    println!("code: {:?}", code);
 
     // Surround code with parens so there is a list of directives at
     // the top level
@@ -341,10 +340,8 @@ fn try_main() -> Fallible<()> {
 
     let sexprs = lexpr::from_str(&code)?;
     let sexprs = unwrap_sexpr_list(sexprs);
-    println!("sexprs: {:?}", sexprs);
 
     let prog = Ast::from_sexprs(&sexprs)?;
-    println!("program: {:?}", prog);
 
     prog.eval();
 
