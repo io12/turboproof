@@ -34,7 +34,7 @@ enum Term {
     ForAll(Abstraction),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq, Hash, PartialOrd, Ord)]
 struct Abstraction {
     binder: String,
     binder_type: Box<Term>,
@@ -401,6 +401,18 @@ impl Abstraction {
             binder_type,
             body: Box::new(body.beta_reduce_step(ctx)?),
         })
+    }
+}
+
+impl PartialEq for Abstraction {
+    fn eq(&self, other: &Self) -> bool {
+        let other = if self.binder != other.binder {
+            other.subst(&other.binder, &Term::Var(self.binder.to_string()))
+        } else {
+            other.to_owned()
+        };
+
+        self.binder_type == other.binder_type && self.body == other.body
     }
 }
 
