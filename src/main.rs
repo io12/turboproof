@@ -295,11 +295,11 @@ impl Term {
     }
 
     fn beta_reduce_step_app(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
-        if let Term::Lambda(Abstraction {
+        if let Some(Abstraction {
             binder,
             binder_type,
             body,
-        }) = m
+        }) = m.get_abstraction()
         {
             body.subst(&binder, &n).beta_reduce_step(ctx)
         } else {
@@ -321,11 +321,15 @@ impl Term {
         }
     }
 
-    fn is_abstraction(self: &Self) -> bool {
+    fn get_abstraction(self: &Self) -> Option<&Abstraction> {
         match self {
-            Term::Lambda(_) | Term::ForAll(_) => true,
-            _ => false,
+            Term::Lambda(abs) | Term::ForAll(abs) => Some(abs),
+            _ => None,
         }
+    }
+
+    fn is_abstraction(self: &Self) -> bool {
+        self.get_abstraction().is_some()
     }
 
     fn is_app_normal(m: &Term, n: &Term, ctx: &Context) -> bool {
@@ -333,16 +337,19 @@ impl Term {
     }
 
     fn is_normal(self: &Self, ctx: &Context) -> bool {
-        match self {
+        let b = match self {
             Term::Type | Term::Prop => true,
             Term::Var(name) => ctx.get_var(name).is_none(),
             Term::App(m, n) => Term::is_app_normal(m, n, ctx),
             Term::Lambda(abs) | Term::ForAll(abs) => abs.body.is_normal(ctx),
-        }
+        };
+        //println!("normal {}: {:#?}", b, self);
+        b
     }
 
     // Full beta-reduction of terms to their normal form
     fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
+        println!("beta-reduce: {:#?}", self);
         if self.is_normal(ctx) {
             Ok(self.to_owned())
         } else {
