@@ -148,6 +148,7 @@ impl Directive {
             );
         }
 
+        println!("{} defined", name);
         Ok(ctx.add_var(name, val))
     }
 
