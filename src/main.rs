@@ -138,8 +138,8 @@ impl Directive {
         typ: &Term,
         ctx: &Context,
     ) -> Fallible<Context> {
-        let left = val.get_type(ctx)?.beta_reduce(ctx)?;
-        let right = typ.beta_reduce(ctx)?;
+        let left = val.get_type(ctx)?.beta_reduce_step(ctx)?;
+        let right = typ.beta_reduce_step(ctx)?;
         if left != right {
             bail!(
                 "type disagreement\n  left: {:#?}\n  right: {:#?}",
@@ -288,34 +288,65 @@ impl Term {
         .beta_reduce(ctx)
     }
 
-    fn beta_reduce_var(name: &str, ctx: &Context) -> Self {
+    fn beta_reduce_step_var(name: &str, ctx: &Context) -> Self {
         ctx.get_var(name)
             .map(|term| term.to_owned())
             .unwrap_or(Term::Var(name.to_string()))
     }
 
-    fn beta_reduce_app(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
-        let (m, n) = (m.beta_reduce(ctx)?, n.beta_reduce(ctx)?);
+    fn beta_reduce_step_app(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
         if let Term::Lambda(Abstraction {
             binder,
             binder_type,
             body,
         }) = m
         {
-            body.subst(&binder, &n).beta_reduce(ctx)
+            body.subst(&binder, &n).beta_reduce_step(ctx)
         } else {
-            Ok(Term::App(Box::new(m), Box::new(n)))
+            let (m, n) = (m.to_owned(), n.to_owned());
+            let (m, n) = (Box::new(m), Box::new(n));
+            Ok(Term::App(m, n))
         }
     }
 
-    // Beta-reduction of terms
-    fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
+    // Single beta-reduction step, representing one step of term
+    // evaluation
+    fn beta_reduce_step(self: &Self, ctx: &Context) -> Fallible<Self> {
         match self {
             Term::Type | Term::Prop => Ok(self.to_owned()),
-            Term::Var(name) => Ok(Term::beta_reduce_var(name, ctx)),
-            Term::App(m, n) => Term::beta_reduce_app(m, n, ctx),
-            Term::Lambda(abs) => Ok(Term::Lambda(abs.beta_reduce(ctx)?)),
-            Term::ForAll(abs) => Ok(Term::ForAll(abs.beta_reduce(ctx)?)),
+            Term::Var(name) => Ok(Term::beta_reduce_step_var(name, ctx)),
+            Term::App(m, n) => Term::beta_reduce_step_app(m, n, ctx),
+            Term::Lambda(abs) => Ok(Term::Lambda(abs.beta_reduce_step(ctx)?)),
+            Term::ForAll(abs) => Ok(Term::ForAll(abs.beta_reduce_step(ctx)?)),
+        }
+    }
+
+    fn is_abstraction(self: &Self) -> bool {
+        match self {
+            Term::Lambda(_) | Term::ForAll(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_app_normal(m: &Term, n: &Term, ctx: &Context) -> bool {
+        !m.is_abstraction() && m.is_normal(ctx) && n.is_normal(ctx)
+    }
+
+    fn is_normal(self: &Self, ctx: &Context) -> bool {
+        match self {
+            Term::Type | Term::Prop => true,
+            Term::Var(name) => ctx.get_var(name).is_none(),
+            Term::App(m, n) => Term::is_app_normal(m, n, ctx),
+            Term::Lambda(abs) | Term::ForAll(abs) => abs.body.is_normal(ctx),
+        }
+    }
+
+    // Full beta-reduction of terms to their normal form
+    fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
+        if self.is_normal(ctx) {
+            Ok(self.to_owned())
+        } else {
+            self.beta_reduce_step(ctx)?.beta_reduce(ctx)
         }
     }
 }
@@ -354,7 +385,7 @@ impl Abstraction {
         }
     }
 
-    fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce_step(self: &Self, ctx: &Context) -> Fallible<Self> {
         let Self {
             binder,
             binder_type,
@@ -364,7 +395,7 @@ impl Abstraction {
         Ok(Self {
             binder,
             binder_type,
-            body: Box::new(body.beta_reduce(ctx)?),
+            body: Box::new(body.beta_reduce_step(ctx)?),
         })
     }
 }
