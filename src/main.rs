@@ -303,7 +303,7 @@ impl Term {
         {
             body.subst(&binder, &n).beta_reduce_step(ctx)
         } else {
-            let (m, n) = (m.to_owned(), n.to_owned());
+            let (m, n) = (m.beta_reduce_step(ctx)?, n.beta_reduce_step(ctx)?);
             let (m, n) = (Box::new(m), Box::new(n));
             Ok(Term::App(m, n))
         }
@@ -337,19 +337,16 @@ impl Term {
     }
 
     fn is_normal(self: &Self, ctx: &Context) -> bool {
-        let b = match self {
+        match self {
             Term::Type | Term::Prop => true,
             Term::Var(name) => ctx.get_var(name).is_none(),
             Term::App(m, n) => Term::is_app_normal(m, n, ctx),
             Term::Lambda(abs) | Term::ForAll(abs) => abs.body.is_normal(ctx),
-        };
-        //println!("normal {}: {:#?}", b, self);
-        b
+        }
     }
 
     // Full beta-reduction of terms to their normal form
     fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
-        println!("beta-reduce: {:#?}", self);
         if self.is_normal(ctx) {
             Ok(self.to_owned())
         } else {
