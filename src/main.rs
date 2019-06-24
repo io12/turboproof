@@ -295,17 +295,16 @@ impl Term {
     }
 
     fn beta_reduce_app(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
+        let (m, n) = (m.beta_reduce(ctx)?, n.beta_reduce(ctx)?);
         if let Term::Lambda(Abstraction {
             binder,
             binder_type,
             body,
         }) = m
         {
-            body.subst(binder, n).beta_reduce(ctx)
+            body.subst(&binder, &n).beta_reduce(ctx)
         } else {
-            let (m, n) = (m.to_owned(), n.to_owned());
-            let (m, n) = (Box::new(m), Box::new(n));
-            Ok(Term::App(m, n))
+            Ok(Term::App(Box::new(m), Box::new(n)))
         }
     }
 
