@@ -5,10 +5,10 @@
 (Define ~ (lambda A Prop
 	    (forall C Prop ((=> A) C))))
 
-(Define impl_self
+(Define impl_self_prop
   (forall A Prop ((=> A) A)))
 
-(Define impl_self_proof
+(Define impl_self_body
   (lambda A Prop (lambda H A H)))
 
-(Define verif impl_self_proof impl_self)
+(Define impl_self impl_self_body impl_self_prop)
