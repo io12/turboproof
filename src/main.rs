@@ -222,6 +222,27 @@ impl Term {
         }
     }
 
+    fn app_from_sexpr_list(list: &[Sexpr], var_stack: &Vec<String>) -> Fallible<Term> {
+        let list = list
+            .iter()
+            .map(|exp| Term::from_sexpr_vstk(exp, var_stack))
+            .map(|res_term| res_term.map(|term| Box::new(term)))
+            .collect::<Fallible<Vec<_>>>()?;
+
+        match list.split_first() {
+            Some((head, tail)) => tail
+                .iter()
+                .try_fold(head.to_owned(), |a, b| {
+                    let b = b.to_owned();
+                    let term = Term::App(a, b);
+
+                    Ok(Box::new(term))
+                })
+                .map(|term| *term),
+            None => bail!("empty list unrecognized"),
+        }
+    }
+
     fn from_sexpr_list(list: &Vec<Sexpr>, var_stack: &Vec<String>) -> Fallible<Self> {
         let first_sexpr = list
             .first()
@@ -230,17 +251,11 @@ impl Term {
         match first_sexpr.as_symbol() {
             Some("lambda") => Ok(Term::Lambda(Abstraction::from_sexpr_list(list, var_stack)?)),
             Some("forall") => Ok(Term::ForAll(Abstraction::from_sexpr_list(list, var_stack)?)),
-            _ => match list.as_slice() {
-                [a, b] => Ok(Term::App(
-                    Box::new(Term::from_sexpr_with_var_stack(a, var_stack)?),
-                    Box::new(Term::from_sexpr_with_var_stack(b, var_stack)?),
-                )),
-                _ => bail!("invalid application"),
-            },
+            _ => Term::app_from_sexpr_list(list, var_stack),
         }
     }
 
-    fn from_sexpr_with_var_stack(prog: &Sexpr, var_stack: &Vec<String>) -> Fallible<Self> {
+    fn from_sexpr_vstk(prog: &Sexpr, var_stack: &Vec<String>) -> Fallible<Self> {
         match prog {
             Sexpr::Atom(atom) => Term::from_sexpr_atom(atom, var_stack),
             Sexpr::List(list) => Term::from_sexpr_list(list, var_stack),
@@ -249,7 +264,7 @@ impl Term {
     }
 
     fn from_sexpr(sexpr: &Sexpr) -> Fallible<Self> {
-        Term::from_sexpr_with_var_stack(sexpr, &Vec::new())
+        Term::from_sexpr_vstk(sexpr, &Vec::new())
     }
 
     fn get_app_type(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
@@ -405,13 +420,13 @@ impl Abstraction {
                     .ok_or_else(|| format_err!("binder in lambda is not a symbol"))?
                     .to_string();
 
-                let binder_type = Term::from_sexpr_with_var_stack(binder_type, var_stack)?;
+                let binder_type = Term::from_sexpr_vstk(binder_type, var_stack)?;
                 let binder_type = Box::new(binder_type);
 
                 let mut var_stack = var_stack.to_owned();
                 var_stack.push(binder);
 
-                let body = Term::from_sexpr_with_var_stack(body, &var_stack)?;
+                let body = Term::from_sexpr_vstk(body, &var_stack)?;
                 let body = Box::new(body);
 
                 Ok(Self { binder_type, body })
