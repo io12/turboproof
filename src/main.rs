@@ -5,6 +5,7 @@ extern crate failure;
 extern crate im;
 extern crate lexpr;
 
+use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
 use failure::Fallible;
@@ -22,31 +23,40 @@ enum Directive {
     Define(String, Term),
     DefineWithType(String, Term, Term),
     Check(Term),
+    Print(Term),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum Term {
     Type,
     Prop,
-    Var(String),
+    Var(Var),
     App(Box<Term>, Box<Term>),
     Lambda(Abstraction),
     ForAll(Abstraction),
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum Var {
+    Global(String), // Globally-defined name
+    Local(usize),   // De Bruijn index
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct Abstraction {
-    binder: String,
     binder_type: Box<Term>,
     body: Box<Term>,
 }
 
 #[derive(Debug, Clone)]
 struct Context {
-    // Mapping of variable names to values
-    vars: OrdMap<String, Term>,
-    // Mapping of terms to their types
-    types: OrdMap<Term, Term>,
+    // Mapping of global names to values
+    global_vars: OrdMap<String, Term>,
+    // Mapping of local bindings (De Bruijn indices) to their types.
+    // This vector is indexed as `vec[De Bruijn index - 1]`. Entering
+    // the scope of an abstraction during type checking prepends the
+    // abstraction's binder type to this.
+    local_binding_types: Vec<Term>,
 }
 
 impl Ast {
@@ -60,7 +70,7 @@ impl Ast {
     }
 
     // TODO: make this clearer
-    fn eval(self: &Self) -> Fallible<()> {
+    fn eval(&self) -> Fallible<()> {
         self.directives
             .iter()
             .fold(Ok(Context::new()), |ctx, direct| match ctx {
@@ -111,6 +121,17 @@ impl Directive {
         }
     }
 
+    // TODO: remove this boilerplate somehow
+    fn print_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+        match list.as_slice() {
+            [_, term] => {
+                let term = Term::from_sexpr(term)?;
+                Ok(Directive::Print(term))
+            }
+            _ => bail!("print directive needs 1 parameter"),
+        }
+    }
+
     fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
         let first_sym = list
             .first()
@@ -121,6 +142,7 @@ impl Directive {
         match first_sym {
             "Define" => Directive::define_from_sexpr_list(list),
             "Check" => Directive::check_from_sexpr_list(list),
+            "Print" => Directive::print_from_sexpr_list(list),
             _ => bail!("unknown directive '{}'", first_sym),
         }
     }
@@ -149,7 +171,7 @@ impl Directive {
         }
 
         println!("{} defined", name);
-        Ok(ctx.add_var(name, val))
+        Ok(ctx.add_global_var(name, val))
     }
 
     fn eval_check(term: &Term, ctx: &Context) -> Fallible<()> {
@@ -157,9 +179,14 @@ impl Directive {
         Ok(())
     }
 
-    fn eval(self: &Self, ctx: &Context) -> Fallible<Context> {
+    fn eval_print(term: &Term, ctx: &Context) -> Fallible<()> {
+        println!("term: {:#?}", term.beta_reduce(ctx)?);
+        Ok(())
+    }
+
+    fn eval(&self, ctx: &Context) -> Fallible<Context> {
         match self {
-            Directive::Define(name, val) => Ok(ctx.add_var(name, val)),
+            Directive::Define(name, val) => Ok(ctx.add_global_var(name, val)),
             Directive::DefineWithType(name, val, typ) => {
                 Directive::eval_define_with_type(name, val, typ, ctx)
             }
@@ -167,78 +194,68 @@ impl Directive {
                 Directive::eval_check(term, ctx)?;
                 Ok(ctx.to_owned())
             }
+            Directive::Print(term) => {
+                Directive::eval_print(term, ctx)?;
+                Ok(ctx.to_owned())
+            }
         }
     }
 }
 
 impl Term {
-    fn from_symbol(sym: &str) -> Self {
+    fn from_symbol(sym: &str, var_stack: &Vec<String>) -> Self {
         match sym {
             "Type" => Term::Type,
             "Prop" => Term::Prop,
-            s => Term::Var(s.to_string()),
+            sym => Term::Var(Var::from_symbol(sym, var_stack)),
         }
     }
 
-    fn from_sexpr_atom(atom: &SexprAtom) -> Fallible<Self> {
+    fn from_sexpr_atom(atom: &SexprAtom, var_stack: &Vec<String>) -> Fallible<Self> {
         match atom {
             SexprAtom::Nil => bail!("nil unrecognized"),
             SexprAtom::Bool(_) => bail!("bool unrecognized"),
             SexprAtom::Number(_) => bail!("numbers unrecognized"),
             SexprAtom::String(_) => bail!("strings unrecognized"),
-            SexprAtom::Symbol(s) => Ok(Term::from_symbol(&s)),
+            SexprAtom::Symbol(s) => Ok(Term::from_symbol(&s, var_stack)),
             SexprAtom::Keyword(_) => bail!("keyword unrecognized"),
         }
     }
 
-    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+    fn from_sexpr_list(list: &Vec<Sexpr>, var_stack: &Vec<String>) -> Fallible<Self> {
         let first_sexpr = list
             .first()
             .ok_or_else(|| format_err!("empty list unrecognized"))?;
 
         match first_sexpr.as_symbol() {
-            Some("lambda") => Ok(Term::Lambda(Abstraction::from_sexpr_list(list)?)),
-            Some("forall") => Ok(Term::ForAll(Abstraction::from_sexpr_list(list)?)),
+            Some("lambda") => Ok(Term::Lambda(Abstraction::from_sexpr_list(list, var_stack)?)),
+            Some("forall") => Ok(Term::ForAll(Abstraction::from_sexpr_list(list, var_stack)?)),
             _ => match list.as_slice() {
                 [a, b] => Ok(Term::App(
-                    Box::new(Term::from_sexpr(a)?),
-                    Box::new(Term::from_sexpr(b)?),
+                    Box::new(Term::from_sexpr_with_var_stack(a, var_stack)?),
+                    Box::new(Term::from_sexpr_with_var_stack(b, var_stack)?),
                 )),
                 _ => bail!("invalid application"),
             },
         }
     }
 
-    fn from_sexpr(prog: &Sexpr) -> Fallible<Self> {
+    fn from_sexpr_with_var_stack(prog: &Sexpr, var_stack: &Vec<String>) -> Fallible<Self> {
         match prog {
-            Sexpr::Atom(atom) => Term::from_sexpr_atom(atom),
-            Sexpr::List(list) => Term::from_sexpr_list(list),
+            Sexpr::Atom(atom) => Term::from_sexpr_atom(atom, var_stack),
+            Sexpr::List(list) => Term::from_sexpr_list(list, var_stack),
             Sexpr::ImproperList(_, _) => bail!("improper lists unrecognized"),
         }
     }
 
-    fn subst(self: &Self, var: &str, val: &Term) -> Self {
-        match self {
-            Term::Type | Term::Prop => self.to_owned(),
-            Term::Var(name) => if name == var { val } else { self }.to_owned(),
-            Term::App(m, n) => Term::App(Box::new(m.subst(var, val)), Box::new(n.subst(var, val))),
-            Term::Lambda(abs) => Term::Lambda(abs.subst(var, val)),
-            Term::ForAll(abs) => Term::ForAll(abs.subst(var, val)),
-        }
+    fn from_sexpr(sexpr: &Sexpr) -> Fallible<Self> {
+        Term::from_sexpr_with_var_stack(sexpr, &Vec::new())
     }
 
     fn get_app_type(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
-        if let (
-            Some(Term::ForAll(Abstraction {
-                binder: x,
-                binder_type: a_0,
-                body: b,
-            })),
-            Some(a_1),
-        ) = (ctx.get_type(m), ctx.get_type(n))
-        {
-            if **a_0 == *a_1 {
-                Ok(b.subst(x, n))
+        if let (Ok(Term::ForAll(abs)), Ok(arg_type)) = (m.get_type(ctx), n.get_type(ctx)) {
+            if *abs.binder_type == arg_type {
+                Ok(abs.do_app(n))
             } else {
                 Err(format_err!("invalid application"))
             }
@@ -248,40 +265,33 @@ impl Term {
     }
 
     fn get_lambda_type(abs: &Abstraction, ctx: &Context) -> Fallible<Self> {
-        let Abstraction {
-            binder,
-            binder_type,
-            body,
-        } = abs.clone();
+        let Abstraction { binder_type, body } = abs;
 
-        let ctx = ctx.add_type(&Term::Var(binder.clone()), &*binder_type);
+        let ctx = ctx.enter_abstraction(binder_type);
 
         let body_type = body.get_type(&ctx)?;
 
         Ok(Term::ForAll(Abstraction {
-            binder,
-            binder_type,
+            binder_type: binder_type.to_owned(),
             body: Box::new(body_type),
         }))
     }
 
-    fn get_var_type(name: &str, ctx: &Context) -> Fallible<Self> {
-        let maybe_type = ctx.get_type(&Term::Var(name.to_string()));
-
-        match maybe_type {
-            Some(typ) => Ok(typ.to_owned()),
-            None => ctx
-                .get_var(name)
-                .ok_or_else(|| format_err!("could not find binding '{}' in scope", name))?
-                .get_type(ctx),
+    fn get_var_type(var: &Var, ctx: &Context) -> Fallible<Self> {
+        match var {
+            Var::Global(name) => ctx
+                .get_global_var(name)
+                .ok_or_else(|| format_err!("variable '{}' not in scope", name))
+                .and_then(|term| term.get_type(ctx)),
+            &Var::Local(n) => Ok(ctx.get_local_binding_type(n).to_owned()),
         }
     }
 
     // Type checking
-    fn get_type(self: &Self, ctx: &Context) -> Fallible<Self> {
+    fn get_type(&self, ctx: &Context) -> Fallible<Self> {
         match self {
             Term::Type | Term::Prop => Ok(Term::Type),
-            Term::Var(name) => Term::get_var_type(name, ctx),
+            Term::Var(var) => Term::get_var_type(var, ctx),
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
             Term::Lambda(abs) => Term::get_lambda_type(abs, ctx),
             Term::ForAll(_) => Ok(Term::Prop),
@@ -289,20 +299,21 @@ impl Term {
         .beta_reduce(ctx)
     }
 
-    fn beta_reduce_step_var(name: &str, ctx: &Context) -> Self {
-        ctx.get_var(name)
-            .map(|term| term.to_owned())
-            .unwrap_or(Term::Var(name.to_string()))
+    fn beta_reduce_step_var(var: &Var, ctx: &Context) -> Fallible<Self> {
+        match var {
+            Var::Global(name) => ctx
+                .get_global_var(name)
+                .map(|term| term.to_owned())
+                .ok_or_else(|| {
+                    format_err!("variable '{}' not in scope during beta-reduction", name)
+                }),
+            Var::Local(_) => Ok(Term::Var(var.to_owned())),
+        }
     }
 
     fn beta_reduce_step_app(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
-        if let Some(Abstraction {
-            binder,
-            binder_type,
-            body,
-        }) = m.get_abstraction()
-        {
-            body.subst(&binder, &n).beta_reduce_step(ctx)
+        if let Some(abs) = m.get_abstraction() {
+            abs.do_app(&n).beta_reduce_step(ctx)
         } else {
             let (m, n) = (m.beta_reduce_step(ctx)?, n.beta_reduce_step(ctx)?);
             let (m, n) = (Box::new(m), Box::new(n));
@@ -312,24 +323,24 @@ impl Term {
 
     // Single beta-reduction step, representing one step of term
     // evaluation
-    fn beta_reduce_step(self: &Self, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce_step(&self, ctx: &Context) -> Fallible<Self> {
         match self {
             Term::Type | Term::Prop => Ok(self.to_owned()),
-            Term::Var(name) => Ok(Term::beta_reduce_step_var(name, ctx)),
+            Term::Var(var) => Term::beta_reduce_step_var(var, ctx),
             Term::App(m, n) => Term::beta_reduce_step_app(m, n, ctx),
             Term::Lambda(abs) => Ok(Term::Lambda(abs.beta_reduce_step(ctx)?)),
             Term::ForAll(abs) => Ok(Term::ForAll(abs.beta_reduce_step(ctx)?)),
         }
     }
 
-    fn get_abstraction(self: &Self) -> Option<&Abstraction> {
+    fn get_abstraction(&self) -> Option<&Abstraction> {
         match self {
             Term::Lambda(abs) | Term::ForAll(abs) => Some(abs),
             _ => None,
         }
     }
 
-    fn is_abstraction(self: &Self) -> bool {
+    fn is_abstraction(&self) -> bool {
         self.get_abstraction().is_some()
     }
 
@@ -337,21 +348,48 @@ impl Term {
         !m.is_abstraction() && m.is_normal(ctx) && n.is_normal(ctx)
     }
 
-    fn is_normal(self: &Self, ctx: &Context) -> bool {
+    fn is_normal(&self, ctx: &Context) -> bool {
         match self {
-            Term::Type | Term::Prop => true,
-            Term::Var(name) => ctx.get_var(name).is_none(),
+            Term::Type | Term::Prop | Term::Var(Var::Local(_)) => true,
+            Term::Var(Var::Global(name)) => ctx.get_global_var(name).is_none(),
             Term::App(m, n) => Term::is_app_normal(m, n, ctx),
             Term::Lambda(abs) | Term::ForAll(abs) => abs.body.is_normal(ctx),
         }
     }
 
     // Full beta-reduction of terms to their normal form
-    fn beta_reduce(self: &Self, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce(&self, ctx: &Context) -> Fallible<Self> {
         if self.is_normal(ctx) {
             Ok(self.to_owned())
         } else {
             self.beta_reduce_step(ctx)?.beta_reduce(ctx)
+        }
+    }
+
+    fn do_app_depth(&self, arg: &Term, depth: usize) -> Self {
+        match self {
+            Term::Type | Term::Prop | Term::Var(Var::Global(_)) => self.to_owned(),
+            &Term::Var(Var::Local(n)) => match n.cmp(&depth) {
+                Ordering::Less => self.to_owned(),
+                Ordering::Greater => Term::Var(Var::Local(n - 1)),
+                Ordering::Equal => arg.to_owned(),
+            },
+            Term::App(m, n) => {
+                let (m, n) = (m.do_app_depth(arg, depth), n.do_app_depth(arg, depth));
+                let (m, n) = (Box::new(m), Box::new(n));
+                Term::App(m, n)
+            }
+            Term::Lambda(abs) => Term::Lambda(abs.do_app_depth_helper(arg, depth)),
+            Term::ForAll(abs) => Term::ForAll(abs.do_app_depth_helper(arg, depth)),
+        }
+    }
+}
+
+impl Var {
+    fn from_symbol(name: &str, var_stack: &Vec<String>) -> Self {
+        match var_stack.iter().rev().position(|var| var == name) {
+            Some(ind) => Var::Local(ind + 1),
+            None => Var::Global(name.to_string()),
         }
     }
 }
@@ -359,94 +397,102 @@ impl Term {
 impl Abstraction {
     // Parse list of form (abstraction_type binder binder_type body)
     // TODO: refactor
-    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+    fn from_sexpr_list(list: &Vec<Sexpr>, var_stack: &Vec<String>) -> Fallible<Self> {
         match list.as_slice() {
-            [_, binder, binder_type, body] => Ok(Self {
-                binder: binder
+            [_, binder, binder_type, body] => {
+                let binder = binder
                     .as_symbol()
                     .ok_or_else(|| format_err!("binder in lambda is not a symbol"))?
-                    .to_string(),
-                binder_type: Box::new(Term::from_sexpr(binder_type)?),
-                body: Box::new(Term::from_sexpr(body)?),
-            }),
+                    .to_string();
+
+                let binder_type = Term::from_sexpr_with_var_stack(binder_type, var_stack)?;
+                let binder_type = Box::new(binder_type);
+
+                let mut var_stack = var_stack.to_owned();
+                var_stack.push(binder);
+
+                let body = Term::from_sexpr_with_var_stack(body, &var_stack)?;
+                let body = Box::new(body);
+
+                Ok(Self { binder_type, body })
+            }
             _ => bail!("abstraction format error"),
         }
     }
 
-    fn subst(self: &Self, var: &str, val: &Term) -> Self {
-        if self.binder == var {
-            self.to_owned()
-        } else {
-            let Self {
-                binder,
-                binder_type,
-                body,
-            } = self.to_owned();
-            Self {
-                binder,
-                binder_type,
-                body: Box::new(body.subst(var, val)),
-            }
-        }
+    fn beta_reduce_step(&self, ctx: &Context) -> Fallible<Self> {
+        let Self { binder_type, body } = self.to_owned();
+
+        let ctx = ctx.enter_abstraction(&*binder_type);
+
+        let body = Box::new(body.beta_reduce_step(&ctx)?);
+
+        Ok(Self { binder_type, body })
     }
 
-    fn beta_reduce_step(self: &Self, ctx: &Context) -> Fallible<Self> {
-        let Self {
-            binder,
-            binder_type,
-            body,
-        } = self.to_owned();
-
-        Ok(Self {
-            binder,
-            binder_type,
-            body: Box::new(body.beta_reduce_step(ctx)?),
-        })
+    fn do_app(&self, arg: &Term) -> Term {
+        self.body.do_app_depth(arg, 1)
     }
-}
 
-impl PartialEq for Abstraction {
-    fn eq(&self, other: &Self) -> bool {
-        let other = if self.binder != other.binder {
-            other.subst(&other.binder, &Term::Var(self.binder.to_string()))
-        } else {
-            other.to_owned()
-        };
+    fn do_app_depth_helper(&self, arg: &Term, depth: usize) -> Self {
+        let binder_type = self.binder_type.do_app_depth(arg, depth);
+        let binder_type = Box::new(binder_type);
 
-        self.binder_type == other.binder_type && self.body == other.body
+        let body = self.body.do_app_depth(arg, depth + 1);
+        let body = Box::new(body);
+
+        Self { binder_type, body }
     }
 }
 
 impl Context {
     fn new() -> Self {
         Self {
-            vars: OrdMap::new(),
-            types: OrdMap::new(),
+            global_vars: OrdMap::new(),
+            local_binding_types: Vec::new(),
         }
     }
 
-    fn add_var(self: &Self, name: &str, val: &Term) -> Self {
-        let Self { vars, types } = self.to_owned();
+    fn add_global_var(&self, name: &str, val: &Term) -> Self {
+        let Self {
+            global_vars,
+            local_binding_types,
+        } = self.to_owned();
+
+        let global_vars = global_vars.update(name.to_string(), val.to_owned());
+
         Self {
-            vars: vars.update(name.to_string(), val.to_owned()),
-            types,
+            global_vars,
+            local_binding_types,
         }
     }
 
-    fn add_type(self: &Self, val: &Term, typ: &Term) -> Self {
-        let Self { vars, types } = self.to_owned();
+    fn enter_abstraction(&self, binding_type: &Term) -> Self {
+        let Self {
+            global_vars,
+            mut local_binding_types,
+        } = self.to_owned();
+
+        local_binding_types.push(binding_type.to_owned());
+
         Self {
-            vars,
-            types: types.update(val.to_owned(), typ.to_owned()),
+            global_vars,
+            local_binding_types,
         }
     }
 
-    fn get_var(self: &Self, name: &str) -> Option<&Term> {
-        self.vars.get(name)
+    fn get_global_var(&self, name: &str) -> Option<&Term> {
+        self.global_vars.get(name)
     }
 
-    fn get_type(self: &Self, val: &Term) -> Option<&Term> {
-        self.types.get(val)
+    fn get_local_binding_type(&self, n: usize) -> &Term {
+        // An out of bounds index here means an error in the code, so
+        // panicking instead of a meaningful error is okay
+        self.local_binding_types
+            .iter()
+            .rev()
+            .nth(n - 1)
+            .expect("couldn't get local binding type")
     }
 }
 
