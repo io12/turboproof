@@ -30,6 +30,7 @@ enum Directive {
 enum Term {
     Type,
     Prop,
+    Set,
     Var(Var),
     App(Box<Term>, Box<Term>),
     Lambda(Abstraction),
@@ -305,7 +306,7 @@ impl Term {
     // Type checking
     fn get_type(&self, ctx: &Context) -> Fallible<Self> {
         match self {
-            Term::Type | Term::Prop => Ok(Term::Type),
+            Term::Type | Term::Prop | Term::Set => Ok(Term::Type),
             Term::Var(var) => Term::get_var_type(var, ctx),
             Term::App(m, n) => Term::get_app_type(m, n, ctx),
             Term::Lambda(abs) => Term::get_lambda_type(abs, ctx),
@@ -340,7 +341,7 @@ impl Term {
     // evaluation
     fn beta_reduce_step(&self, ctx: &Context) -> Fallible<Self> {
         match self {
-            Term::Type | Term::Prop => Ok(self.to_owned()),
+            Term::Type | Term::Prop | Term::Set => Ok(self.to_owned()),
             Term::Var(var) => Term::beta_reduce_step_var(var, ctx),
             Term::App(m, n) => Term::beta_reduce_step_app(m, n, ctx),
             Term::Lambda(abs) => Ok(Term::Lambda(abs.beta_reduce_step(ctx)?)),
@@ -365,7 +366,7 @@ impl Term {
 
     fn is_normal(&self, ctx: &Context) -> bool {
         match self {
-            Term::Type | Term::Prop | Term::Var(Var::Local(_)) => true,
+            Term::Type | Term::Prop | Term::Set | Term::Var(Var::Local(_)) => true,
             Term::Var(Var::Global(name)) => ctx.get_global_var(name).is_none(),
             Term::App(m, n) => Term::is_app_normal(m, n, ctx),
             Term::Lambda(abs) | Term::ForAll(abs) => abs.body.is_normal(ctx),
@@ -383,7 +384,7 @@ impl Term {
 
     fn do_app_depth(&self, arg: &Term, depth: usize) -> Self {
         match self {
-            Term::Type | Term::Prop | Term::Var(Var::Global(_)) => self.to_owned(),
+            Term::Type | Term::Prop | Term::Set | Term::Var(Var::Global(_)) => self.to_owned(),
             &Term::Var(Var::Local(n)) => match n.cmp(&depth) {
                 Ordering::Less => self.to_owned(),
                 Ordering::Greater => Term::Var(Var::Local(n - 1)),
