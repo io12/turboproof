@@ -6,6 +6,7 @@ extern crate im;
 extern crate lexpr;
 
 use std::cmp::Ordering;
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use failure::Fallible;
@@ -55,6 +56,34 @@ struct Context {
     // the scope of an abstraction during type checking prepends the
     // abstraction's binder type to this.
     local_binding_types: Vec<Term>,
+}
+
+impl fmt::Display for Term {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Term::Type => write!(f, "Type"),
+            Term::Var(var) => write!(f, "{}", var),
+            Term::App(m, n) => write!(f, "({} {})", m, n),
+            Term::Lambda(abs) => write!(f, "(lambda {})", abs),
+            Term::ForAll(abs) => write!(f, "(forall {})", abs),
+        }
+    }
+}
+
+impl fmt::Display for Var {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Var::Global(name) => write!(f, "{}", name),
+            Var::Local(ind) => write!(f, "{}", ind),
+        }
+    }
+}
+
+impl fmt::Display for Abstraction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO: Convert De-Brujin indices to names
+        write!(f, "{} {}", self.binder_type, self.body)
+    }
 }
 
 impl Ast {
@@ -157,11 +186,7 @@ impl Directive {
         let right = typ.beta_reduce(ctx)?;
 
         if left != right {
-            bail!(
-                "type disagreement\n  left: {:#?}\n  right: {:#?}",
-                left,
-                right
-            );
+            bail!("type disagreement\n  left: {}\n  right: {}", left, right);
         }
 
         println!("{} defined", name);
@@ -169,12 +194,12 @@ impl Directive {
     }
 
     fn eval_check(term: &Term, ctx: &Context) -> Fallible<()> {
-        println!("type: {:#?}", term.get_type(ctx)?);
+        println!("type: {}", term.get_type(ctx)?);
         Ok(())
     }
 
     fn eval_print(term: &Term, ctx: &Context) -> Fallible<()> {
-        println!("term: {:#?}", term.beta_reduce(ctx)?);
+        println!("term: {}", term.beta_reduce(ctx)?);
         Ok(())
     }
 
