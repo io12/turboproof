@@ -14,19 +14,17 @@ use im::ordmap::OrdMap;
 use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
-#[derive(Debug)]
 struct Ast {
     directives: Vec<Directive>,
 }
 
-#[derive(Debug)]
 enum Directive {
     Define(String, Term, Term), // (name, type, body)
     Check(Term),
     Print(Term),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum Term {
     Type,
     Var(Var),
@@ -35,19 +33,19 @@ enum Term {
     ForAll(Abstraction),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum Var {
     Global(String), // Globally-defined name
     Local(usize),   // De Bruijn index
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct Abstraction {
     binder_type: Box<Term>,
     body: Box<Term>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Context {
     // Mapping of global names to values
     global_vars: OrdMap<String, Term>,
