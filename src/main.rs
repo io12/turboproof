@@ -20,8 +20,7 @@ struct Ast {
 
 #[derive(Debug)]
 enum Directive {
-    Define(String, Term),
-    DefineWithType(String, Term, Term),
+    Define(String, Term, Term), // (name, type, body)
     Check(Term),
     Print(Term),
 }
@@ -82,7 +81,7 @@ impl Ast {
 
 impl Directive {
     // TODO: remove this boilerplate somehow
-    // (Define name val [type])
+    // (Define name type body)
     fn define_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
         ensure!(
             list.len() == 3 || list.len() == 4,
@@ -96,17 +95,17 @@ impl Directive {
             .ok_or_else(|| format_err!("name in define directive is not a symbol"))?
             .to_string();
 
-        let val = list
+        let typ = list
             .get(2)
-            .ok_or_else(|| format_err!("define directive has no value"))
+            .ok_or_else(|| format_err!("define directive has no type"))
             .and_then(|val| Term::from_sexpr(val))?;
 
-        let maybe_type = list.get(3).and_then(|typ| Term::from_sexpr(typ).ok());
+        let body = list
+            .get(3)
+            .ok_or_else(|| format_err!("define directive has no body"))
+            .and_then(|val| Term::from_sexpr(val))?;
 
-        Ok(match maybe_type {
-            Some(typ) => Directive::DefineWithType(name, val, typ),
-            None => Directive::Define(name, val),
-        })
+        Ok(Directive::Define(name, typ, body))
     }
 
     // TODO: remove this boilerplate somehow
@@ -153,14 +152,10 @@ impl Directive {
         }
     }
 
-    fn eval_define_with_type(
-        name: &str,
-        val: &Term,
-        typ: &Term,
-        ctx: &Context,
-    ) -> Fallible<Context> {
+    fn eval_define(name: &str, typ: &Term, val: &Term, ctx: &Context) -> Fallible<Context> {
         let left = val.get_type(ctx)?.beta_reduce(ctx)?;
         let right = typ.beta_reduce(ctx)?;
+
         if left != right {
             bail!(
                 "type disagreement\n  left: {:#?}\n  right: {:#?}",
@@ -185,10 +180,7 @@ impl Directive {
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
         match self {
-            Directive::Define(name, val) => Ok(ctx.add_global_var(name, val)),
-            Directive::DefineWithType(name, val, typ) => {
-                Directive::eval_define_with_type(name, val, typ, ctx)
-            }
+            Directive::Define(name, typ, val) => Directive::eval_define(name, typ, val, ctx),
             Directive::Check(term) => {
                 Directive::eval_check(term, ctx)?;
                 Ok(ctx.to_owned())
