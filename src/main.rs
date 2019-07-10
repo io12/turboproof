@@ -420,7 +420,7 @@ impl Term {
             Var::Global(name) => ctx
                 .get_global_var(name)
                 .ok_or_else(|| format_err!("variable '{}' not in scope", name))
-                .and_then(|term| term.get_type(ctx)),
+                .map(|type_val| type_val.typ),
             &Var::Local(n) => Ok(ctx.get_local_binding_type(n).to_owned()),
         }
     }
