@@ -23,10 +23,8 @@ struct Ast {
 struct DefineDirective {
     /// Name to define
     name: String,
-    /// Type of value
-    typ: Term,
-    /// Value
-    val: Term,
+    /// Value and its type
+    type_val: TypeVal,
 }
 
 /// Binding of a name to a type
@@ -92,8 +90,8 @@ struct Abstraction {
 /// Type and value context
 #[derive(Clone)]
 struct Context {
-    /// Mapping of global names to values
-    global_vars: OrdMap<String, Term>,
+    /// Mapping of global names to values and their types
+    global_vars: OrdMap<String, TypeVal>,
     /// Mapping of local bindings (De Bruijn indices) to their types.
     /// This vector is indexed as `vec[De Bruijn index - 1]`. Entering
     /// the scope of an abstraction during type checking prepends the
@@ -160,22 +158,25 @@ impl DefineDirective {
                 .to_string();
             let typ = Term::from_sexpr(&typ)?;
             let val = Term::from_sexpr(&val)?;
+            let type_val = TypeVal { typ, val };
 
-            Ok(Self { name, typ, val })
+            Ok(Self { name, type_val })
         } else {
             bail!("define directive has incorrect amount of arguments")
         }
     }
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
-        let left = self.val.get_type(ctx)?.beta_reduce(ctx)?;
-        let right = self.typ.beta_reduce(ctx)?;
+        let TypeVal { typ, val } = self.type_val;
+
+        let left = typ.beta_reduce(ctx)?;
+        let right = val.get_type(ctx)?.beta_reduce(ctx)?;
 
         if left != right {
             bail!("type disagreement\n  left: {}\n  right: {}", left, right);
         }
 
-        Ok(ctx.add_global_var(&self.name, &self.val))
+        Ok(ctx.add_global_var(&self.name, &self.type_val))
     }
 }
 
@@ -591,13 +592,13 @@ impl Context {
         }
     }
 
-    fn add_global_var(&self, name: &str, val: &Term) -> Self {
+    fn add_global_var(&self, name: &str, var: &TypeVal) -> Self {
         let Self {
             global_vars,
             local_binding_types,
         } = self.to_owned();
 
-        let global_vars = global_vars.update(name.to_string(), val.to_owned());
+        let global_vars = global_vars.update(name.to_string(), var.to_owned());
 
         Self {
             global_vars,
@@ -619,7 +620,7 @@ impl Context {
         }
     }
 
-    fn get_global_var(&self, name: &str) -> Option<&Term> {
+    fn get_global_var(&self, name: &str) -> Option<&TypeVal> {
         self.global_vars.get(name)
     }
 
