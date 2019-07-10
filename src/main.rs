@@ -431,7 +431,7 @@ impl Term {
             Var::Global(name) => ctx
                 .get_global_binding(name)
                 .ok_or_else(|| format_err!("variable '{}' not in scope", name))
-                .map(|type_val| type_val.typ),
+                .map(|binding| binding.get_type()),
             &Var::Local(n) => Ok(ctx.get_local_binding_type(n).to_owned()),
         }
     }
@@ -453,7 +453,11 @@ impl Term {
         match var {
             Var::Global(name) => ctx
                 .get_global_binding(name)
-                .map(|typ_val| typ_val.val.to_owned())
+                .map(|binding| if let TypeVal(type_val) {
+                    type_val.val
+                } else {
+                    Term::Var(Var::Global(name))
+                })
                 .ok_or_else(|| {
                     format_err!("variable '{}' not in scope during beta-reduction", name)
                 }),
