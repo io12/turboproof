@@ -65,6 +65,15 @@ struct TypeVal {
     val: Term,
 }
 
+/// A globally-defined name
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum GlobalBinding {
+    /// A term and its type, such as from a define directive
+    TypeVal(TypeVal),
+    /// A constructor
+    Const(Term),
+}
+
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum Term {
     Type,
@@ -91,8 +100,8 @@ struct Abstraction {
 /// Type and value context
 #[derive(Clone)]
 struct Context {
-    /// Mapping of global names to values and their types
-    global_vars: OrdMap<String, TypeVal>,
+    /// Mapping of global names to values
+    global_vars: OrdMap<String, GlobalBinding>,
     /// Mapping of local bindings (De Bruijn indices) to their types.
     /// This vector is indexed as `vec[De Bruijn index - 1]`. Entering
     /// the scope of an abstraction during type checking prepends the
@@ -600,7 +609,9 @@ impl Context {
             local_binding_types,
         } = self.to_owned();
 
-        let global_vars = global_vars.update(name.to_string(), var.to_owned());
+        let binding = GlobalBinding::TypeVal(var.to_owned());
+
+        let global_vars = global_vars.update(name.to_string(), binding);
 
         Self {
             global_vars,
