@@ -153,13 +153,32 @@ impl DefineDirective {
 }
 
 impl DataDirective {
+    // TODO: Make this better code
     fn from_sexpr_list(list: &[Sexpr]) -> Fallible<Self> {
-        if let [name, params, ind_name, consts] {
+        if let [name, params, ind_name, consts] = list {
             let name = name
                 .as_symbol()
                 .ok_or_else(|| format_err!("name in data directive is not a symbol"))?
                 .to_string();
 
+            let params = sexpr_as_list(params)
+                .ok_or_else(|| format_err!("parameters section in data directive is not a list"))?
+                .iter()
+                .map(|param| {
+                    if let [name, typ] = sexpr_as_list(param)
+                        .ok_or_else(|| format_err!("parameter in data directive is not a list"))?
+                        .as_slice()
+                    {
+                        let typ = Term::from_sexpr(typ)?;
+                        Ok((name, typ))
+                    } else {
+                        bail!("invalid parameter in data directive")
+                    }
+                });
+
+            let ind_name = ind_name.as_symbol().ok_or_else(|| {
+                format_err!("induction principle name in data directive is not a symbol")
+            });
         } else {
             bail!("data directive has incorrect amount of arguments")
         }
