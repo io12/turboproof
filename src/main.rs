@@ -101,7 +101,7 @@ struct Abstraction {
 #[derive(Clone)]
 struct Context {
     /// Mapping of global names to values
-    global_vars: OrdMap<String, GlobalBinding>,
+    global_bindings: OrdMap<String, GlobalBinding>,
     /// Mapping of local bindings (De Bruijn indices) to their types.
     /// This vector is indexed as `vec[De Bruijn index - 1]`. Entering
     /// the scope of an abstraction during type checking prepends the
@@ -186,7 +186,7 @@ impl DefineDirective {
             bail!("type disagreement\n  left: {}\n  right: {}", left, right);
         }
 
-        Ok(ctx.add_global_var(&self.name, &self.type_val))
+        Ok(ctx.add_global_binding(&self.name, &self.type_val))
     }
 }
 
@@ -429,7 +429,7 @@ impl Term {
     fn get_var_type(var: &Var, ctx: &Context) -> Fallible<Self> {
         match var {
             Var::Global(name) => ctx
-                .get_global_var(name)
+                .get_global_binding(name)
                 .ok_or_else(|| format_err!("variable '{}' not in scope", name))
                 .map(|type_val| type_val.typ),
             &Var::Local(n) => Ok(ctx.get_local_binding_type(n).to_owned()),
@@ -452,7 +452,7 @@ impl Term {
     fn beta_reduce_step_var(var: &Var, ctx: &Context) -> Fallible<Self> {
         match var {
             Var::Global(name) => ctx
-                .get_global_var(name)
+                .get_global_binding(name)
                 .map(|typ_val| typ_val.val.to_owned())
                 .ok_or_else(|| {
                     format_err!("variable '{}' not in scope during beta-reduction", name)
@@ -501,7 +501,7 @@ impl Term {
     fn is_normal(&self, ctx: &Context) -> bool {
         match self {
             Term::Type | Term::Var(Var::Local(_)) => true,
-            Term::Var(Var::Global(name)) => ctx.get_global_var(name).is_none(),
+            Term::Var(Var::Global(name)) => ctx.get_global_binding(name).is_none(),
             Term::App(m, n) => Term::is_app_normal(m, n, ctx),
             Term::Lambda(abs) | Term::ForAll(abs) => abs.body.is_normal(ctx),
         }
@@ -531,6 +531,16 @@ impl Term {
             }
             Term::Lambda(abs) => Term::Lambda(abs.do_app_depth_helper(arg, depth)),
             Term::ForAll(abs) => Term::ForAll(abs.do_app_depth_helper(arg, depth)),
+        }
+    }
+}
+
+impl GlobalBinding {
+    /// Get the type of a global binding
+    fn get_type(&self) -> Term {
+        match self {
+            &GlobalBinding::TypeVal(type_val) => type_val.typ,
+            &GlobalBinding::Const(typ) => typ,
         }
     }
 }
@@ -598,43 +608,43 @@ impl Abstraction {
 impl Context {
     fn new() -> Self {
         Self {
-            global_vars: OrdMap::new(),
+            global_bindings: OrdMap::new(),
             local_binding_types: Vec::new(),
         }
     }
 
-    fn add_global_var(&self, name: &str, var: &TypeVal) -> Self {
+    fn add_global_binding(&self, name: &str, var: &TypeVal) -> Self {
         let Self {
-            global_vars,
+            global_bindings,
             local_binding_types,
         } = self.to_owned();
 
         let binding = GlobalBinding::TypeVal(var.to_owned());
 
-        let global_vars = global_vars.update(name.to_string(), binding);
+        let global_bindings = global_bindings.update(name.to_string(), binding);
 
         Self {
-            global_vars,
+            global_bindings,
             local_binding_types,
         }
     }
 
     fn enter_abstraction(&self, binding_type: &Term) -> Self {
         let Self {
-            global_vars,
+            global_bindings,
             mut local_binding_types,
         } = self.to_owned();
 
         local_binding_types.push(binding_type.to_owned());
 
         Self {
-            global_vars,
+            global_bindings,
             local_binding_types,
         }
     }
 
-    fn get_global_var(&self, name: &str) -> Option<&TypeVal> {
-        self.global_vars.get(name)
+    fn get_global_binding(&self, name: &str) -> Option<&GlobalBinding> {
+        self.global_bindings.get(name)
     }
 
     fn get_local_binding_type(&self, n: usize) -> &Term {
