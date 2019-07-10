@@ -89,14 +89,15 @@ struct Abstraction {
     body: Box<Term>,
 }
 
+/// Type and value context
 #[derive(Clone)]
 struct Context {
-    // Mapping of global names to values
+    /// Mapping of global names to values
     global_vars: OrdMap<String, Term>,
-    // Mapping of local bindings (De Bruijn indices) to their types.
-    // This vector is indexed as `vec[De Bruijn index - 1]`. Entering
-    // the scope of an abstraction during type checking prepends the
-    // abstraction's binder type to this.
+    /// Mapping of local bindings (De Bruijn indices) to their types.
+    /// This vector is indexed as `vec[De Bruijn index - 1]`. Entering
+    /// the scope of an abstraction during type checking prepends the
+    /// abstraction's binder type to this.
     local_binding_types: Vec<Term>,
 }
 
