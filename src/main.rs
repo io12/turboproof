@@ -29,16 +29,22 @@ struct DefineDirective {
     val: Term,
 }
 
+/// Binding of a name to a type
+struct Binding {
+    name: String,
+    typ: Term,
+}
+
 /// Inductive data type definition
 struct DataDirective {
     /// Name of the type constructor
     name: String,
     /// The names and types of the type constructor's parameters
-    params: Vec<(String, Term)>,
+    params: Vec<Binding>,
     /// Name of this type's induction principle
     ind_name: String,
     /// The type's value constructors
-    consts: Vec<(String, Term)>,
+    consts: Vec<Binding>,
 }
 
 /// Top-level directive
@@ -152,6 +158,26 @@ impl DefineDirective {
     }
 }
 
+impl Binding {
+    fn from_sexpr(sexpr: &Sexpr) -> Fallible<Self> {
+        let list = sexpr_as_list(sexpr)
+            .ok_or_else(|| format_err!("binding is not a list"))?
+            .as_slice();
+
+        if let [name, typ] = list {
+            let name = name
+                .as_symbol()
+                .ok_or_else(|| format_err!("binding name is not a symbol"))?
+                .to_string();
+            let typ = Term::from_sexpr(typ)?;
+
+            Ok(Self {name, typ})
+        } else {
+            bail!("invalid binding format")
+        }
+    }
+}
+
 impl DataDirective {
     // TODO: Make this better code
     fn from_sexpr_list(list: &[Sexpr]) -> Fallible<Self> {
@@ -179,6 +205,10 @@ impl DataDirective {
             let ind_name = ind_name.as_symbol().ok_or_else(|| {
                 format_err!("induction principle name in data directive is not a symbol")
             });
+
+            let consts = sexpr_as_list(consts)
+                .ok_or_else(|| format_err!("constructors section in data directive is not a list"))?
+                .map(|constr|)
         } else {
             bail!("data directive has incorrect amount of arguments")
         }
