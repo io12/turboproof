@@ -171,15 +171,23 @@ impl Binding {
                 .to_string();
             let typ = Term::from_sexpr(typ)?;
 
-            Ok(Self {name, typ})
+            Ok(Self { name, typ })
         } else {
             bail!("invalid binding format")
         }
     }
+
+    fn from_sexpr_map_list(list: &[Sexpr]) -> Fallible<Vec<Self>> {
+        list.iter().map(|exp| Self::from_sexpr(exp)).collect()
+    }
+
+    fn from_sexpr_map(sexpr: &Sexpr) -> Fallible<Vec<Self>> {
+        let list = sexpr_as_list(sexpr).ok_or_else(|| format_err!("expected list of bindings"))?;
+        Self::from_sexpr_map_list(list)
+    }
 }
 
 impl DataDirective {
-    // TODO: Make this better code
     fn from_sexpr_list(list: &[Sexpr]) -> Fallible<Self> {
         if let [name, params, ind_name, consts] = list {
             let name = name
@@ -187,28 +195,23 @@ impl DataDirective {
                 .ok_or_else(|| format_err!("name in data directive is not a symbol"))?
                 .to_string();
 
-            let params = sexpr_as_list(params)
-                .ok_or_else(|| format_err!("parameters section in data directive is not a list"))?
-                .iter()
-                .map(|param| {
-                    if let [name, typ] = sexpr_as_list(param)
-                        .ok_or_else(|| format_err!("parameter in data directive is not a list"))?
-                        .as_slice()
-                    {
-                        let typ = Term::from_sexpr(typ)?;
-                        Ok((name, typ))
-                    } else {
-                        bail!("invalid parameter in data directive")
-                    }
-                });
+            let params = Binding::from_sexpr_map(params)?;
 
-            let ind_name = ind_name.as_symbol().ok_or_else(|| {
-                format_err!("induction principle name in data directive is not a symbol")
-            });
+            let ind_name = ind_name
+                .as_symbol()
+                .ok_or_else(|| {
+                    format_err!("induction principle name in data directive is not a symbol")
+                })?
+                .to_string();
 
-            let consts = sexpr_as_list(consts)
-                .ok_or_else(|| format_err!("constructors section in data directive is not a list"))?
-                .map(|constr|)
+            let consts = Binding::from_sexpr_map(consts)?;
+
+            Ok(Self {
+                name,
+                params,
+                ind_name,
+                consts,
+            })
         } else {
             bail!("data directive has incorrect amount of arguments")
         }
