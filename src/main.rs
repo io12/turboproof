@@ -14,8 +14,9 @@ use im::ordmap::OrdMap;
 use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
-// Abstract syntax tree of a TurboProof program
+/// Abstract syntax tree of a TurboProof program
 struct Ast {
+    /// List of directives
     directives: Vec<Directive>,
 }
 
