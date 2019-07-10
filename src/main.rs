@@ -229,7 +229,9 @@ impl DataDirective {
     }
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
-        // TODO: add code
+        // TODO: Define type constructor
+        // TODO: Define induction principle
+        // TODO: Define value constructors
     }
 }
 
