@@ -59,6 +59,13 @@ enum Directive {
     Print(Term),
 }
 
+/// General-purpose binding between a type and value
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct TypeVal {
+    typ: Term,
+    val: Term,
+}
+
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum Term {
     Type,
@@ -66,6 +73,8 @@ enum Term {
     App(Box<Term>, Box<Term>),
     Lambda(Abstraction),
     ForAll(Abstraction),
+    /// Type annotation
+    Ann(Box<TypeVal>),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
