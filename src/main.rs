@@ -442,7 +442,7 @@ impl Term {
         match var {
             Var::Global(name) => ctx
                 .get_global_var(name)
-                .map(|term| term.to_owned())
+                .map(|typ_val| typ_val.val.to_owned())
                 .ok_or_else(|| {
                     format_err!("variable '{}' not in scope during beta-reduction", name)
                 }),
