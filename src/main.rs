@@ -14,13 +14,42 @@ use im::ordmap::OrdMap;
 use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
 
+// Abstract syntax tree of a TurboProof program
 struct Ast {
     directives: Vec<Directive>,
 }
 
+/// A global name definition
+struct DefineDirective {
+    /// Name to define
+    name: String,
+    /// Type of value
+    typ: Term,
+    /// Value
+    val: Term,
+}
+
+/// Inductive data type definition
+struct DataDirective {
+    /// Name of the type constructor
+    name: String,
+    /// The names and types of the type constructor's parameters
+    params: Vec<(String, Term)>,
+    /// Name of this type's induction principle
+    ind_name: String,
+    /// The type's value constructors
+    consts: Vec<(String, Term)>,
+}
+
+/// Top-level directive
 enum Directive {
-    Define(String, Term, Term), // (name, type, body)
+    /// Global name definition
+    Define(DefineDirective),
+    /// Inductive data type definition
+    Data(DataDirective),
+    /// Type debug print
     Check(Term),
+    /// Value debug print
     Print(Term),
 }
 
@@ -106,33 +135,44 @@ impl Ast {
     }
 }
 
+impl DefineDirective {
+    fn from_sexpr_list(list: &[Sexpr]) -> Fallible<Self> {
+        if let [name, typ, val] = list[1..] {
+            let name = name
+                .as_symbol()
+                .ok_or_else(|| format_err!("name in define directive is not a symbol"))?
+                .to_string();
+            let typ = Term::from_sexpr(&typ)?;
+            let val = Term::from_sexpr(&val)?;
+
+            Ok(Self { name, typ, val })
+        } else {
+            bail!("define directive has incorrect amount of arguments")
+        }
+    }
+}
+
+impl DataDirective {
+    fn from_sexpr_list(list: &[Sexpr]) -> Fallible<Self> {
+        if let [name, params, ind_name, consts] {
+            let name = name
+                .as_symbol()
+                .ok_or_else(|| format_err!("name in data directive is not a symbol"))?
+                .to_string();
+
+        } else {
+            bail!("data directive has incorrect amount of arguments")
+        }
+    }
+}
+
 impl Directive {
-    // TODO: remove this boilerplate somehow
-    // (Define name type body)
-    fn define_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
-        ensure!(
-            list.len() == 3 || list.len() == 4,
-            "define directive has incorrect amount of parameters"
-        );
+    fn define_from_sexpr_list(list: &[Sexpr]) -> Fallible<Self> {
+        Ok(Directive::Define(DefineDirective::from_sexpr_list(list)?))
+    }
 
-        let name = list
-            .get(1)
-            .ok_or_else(|| format_err!("define directive has no name"))?
-            .as_symbol()
-            .ok_or_else(|| format_err!("name in define directive is not a symbol"))?
-            .to_string();
-
-        let typ = list
-            .get(2)
-            .ok_or_else(|| format_err!("define directive has no type"))
-            .and_then(|val| Term::from_sexpr(val))?;
-
-        let body = list
-            .get(3)
-            .ok_or_else(|| format_err!("define directive has no body"))
-            .and_then(|val| Term::from_sexpr(val))?;
-
-        Ok(Directive::Define(name, typ, body))
+    fn data_from_sexpr_list(list: &[Sexpr]) -> Fallible<Self> {
+        Ok(Directive::Data(DataDirective::from_sexpr_list(list)?))
     }
 
     // TODO: remove this boilerplate somehow
@@ -166,6 +206,7 @@ impl Directive {
 
         match first_sym {
             "Define" => Directive::define_from_sexpr_list(list),
+            "Data" => Directive::data_from_sexpr_list(list),
             "Check" => Directive::check_from_sexpr_list(list),
             "Print" => Directive::print_from_sexpr_list(list),
             _ => bail!("unknown directive '{}'", first_sym),
@@ -179,16 +220,15 @@ impl Directive {
         }
     }
 
-    fn eval_define(name: &str, typ: &Term, val: &Term, ctx: &Context) -> Fallible<Context> {
-        let left = val.get_type(ctx)?.beta_reduce(ctx)?;
-        let right = typ.beta_reduce(ctx)?;
+    fn eval_define(def: &DefineDirective, ctx: &Context) -> Fallible<Context> {
+        let left = def.val.get_type(ctx)?.beta_reduce(ctx)?;
+        let right = def.typ.beta_reduce(ctx)?;
 
         if left != right {
             bail!("type disagreement\n  left: {}\n  right: {}", left, right);
         }
 
-        println!("{} defined", name);
-        Ok(ctx.add_global_var(name, val))
+        Ok(ctx.add_global_var(&def.name, &def.val))
     }
 
     fn eval_check(term: &Term, ctx: &Context) -> Fallible<()> {
@@ -203,7 +243,8 @@ impl Directive {
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
         match self {
-            Directive::Define(name, typ, val) => Directive::eval_define(name, typ, val, ctx),
+            Directive::Define(def) => Directive::eval_define(def, ctx),
+            Directive::Data(data) => Directive::eval_data(data, ctx),
             Directive::Check(term) => {
                 Directive::eval_check(term, ctx)?;
                 Ok(ctx.to_owned())
@@ -539,11 +580,15 @@ fn get_input_path() -> PathBuf {
     Path::new(path).to_path_buf()
 }
 
-fn unwrap_sexpr_list(sexpr: Sexpr) -> Vec<Sexpr> {
+fn sexpr_as_list(sexpr: &Sexpr) -> Option<&Vec<Sexpr>> {
     match sexpr {
-        Sexpr::List(sexprs) => sexprs,
-        _ => panic!("expected sexpr list"),
+        Sexpr::List(sexprs) => Some(sexprs),
+        _ => None,
     }
+}
+
+fn expect_sexpr_list(sexpr: &Sexpr) -> &Vec<Sexpr> {
+    sexpr_as_list(sexpr).expect("expected sexpr list")
 }
 
 fn try_main() -> Fallible<()> {
@@ -556,7 +601,7 @@ fn try_main() -> Fallible<()> {
     let code = format!("( {} )", code);
 
     let sexprs = lexpr::from_str(&code)?;
-    let sexprs = unwrap_sexpr_list(sexprs);
+    let sexprs = expect_sexpr_list(&sexprs);
 
     let prog = Ast::from_sexprs(&sexprs)?;
 
