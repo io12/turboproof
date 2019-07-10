@@ -243,6 +243,7 @@ impl DataDirective {
         // TODO: Define type constructor
         // TODO: Define induction principle
         // TODO: Define value constructors
+        // TODO: Various semantics checks
     }
 }
 
