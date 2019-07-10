@@ -156,6 +156,17 @@ impl DefineDirective {
             bail!("define directive has incorrect amount of arguments")
         }
     }
+
+    fn eval(&self, ctx: &Context) -> Fallible<Context> {
+        let left = self.val.get_type(ctx)?.beta_reduce(ctx)?;
+        let right = self.typ.beta_reduce(ctx)?;
+
+        if left != right {
+            bail!("type disagreement\n  left: {}\n  right: {}", left, right);
+        }
+
+        Ok(ctx.add_global_var(&self.name, &self.val))
+    }
 }
 
 impl Binding {
@@ -216,6 +227,10 @@ impl DataDirective {
             bail!("data directive has incorrect amount of arguments")
         }
     }
+
+    fn eval(&self, ctx: &Context) -> Fallible<Context> {
+        // TODO: add code
+    }
 }
 
 impl Directive {
@@ -272,17 +287,6 @@ impl Directive {
         }
     }
 
-    fn eval_define(def: &DefineDirective, ctx: &Context) -> Fallible<Context> {
-        let left = def.val.get_type(ctx)?.beta_reduce(ctx)?;
-        let right = def.typ.beta_reduce(ctx)?;
-
-        if left != right {
-            bail!("type disagreement\n  left: {}\n  right: {}", left, right);
-        }
-
-        Ok(ctx.add_global_var(&def.name, &def.val))
-    }
-
     fn eval_check(term: &Term, ctx: &Context) -> Fallible<()> {
         println!("type: {}", term.get_type(ctx)?);
         Ok(())
@@ -295,8 +299,8 @@ impl Directive {
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
         match self {
-            Directive::Define(def) => Directive::eval_define(def, ctx),
-            Directive::Data(data) => Directive::eval_data(data, ctx),
+            Directive::Define(def) => def.eval(ctx),
+            Directive::Data(data) => data.eval(ctx),
             Directive::Check(term) => {
                 Directive::eval_check(term, ctx)?;
                 Ok(ctx.to_owned())
