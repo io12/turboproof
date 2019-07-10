@@ -453,10 +453,12 @@ impl Term {
         match var {
             Var::Global(name) => ctx
                 .get_global_binding(name)
-                .map(|binding| if let TypeVal(type_val) {
-                    type_val.val
-                } else {
-                    Term::Var(Var::Global(name))
+                .map(|binding| {
+                    if let GlobalBinding::TypeVal(type_val) = binding {
+                        type_val.val
+                    } else {
+                        Term::Var(Var::Global(name.to_owned()))
+                    }
                 })
                 .ok_or_else(|| {
                     format_err!("variable '{}' not in scope during beta-reduction", name)
