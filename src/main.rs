@@ -186,7 +186,9 @@ impl DefineDirective {
             bail!("type disagreement\n  left: {}\n  right: {}", left, right);
         }
 
-        Ok(ctx.add_global_binding(&self.name, &self.type_val))
+        let binding = GlobalBinding::TypeVal(self.type_val);
+
+        Ok(ctx.add_global_binding(&self.name, &binding))
     }
 }
 
@@ -249,8 +251,17 @@ impl DataDirective {
         }
     }
 
+    /// Convert a parameter list to the type of a constructor
+    fn const_type_from_params(params: &[&Term]) -> Term {
+        params.fold()
+    }
+
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
         // TODO: Define type constructor
+        let const_type = DataDirective::const_type_from_params();
+        let binding = GlobalBinding::Const(const_type);
+        let ctx = ctx.add_global_binding(&self.name, &binding);
+
         // TODO: Define induction principle
         // TODO: Define value constructors
         // TODO: Various semantics checks
@@ -619,15 +630,13 @@ impl Context {
         }
     }
 
-    fn add_global_binding(&self, name: &str, var: &TypeVal) -> Self {
+    fn add_global_binding(&self, name: &str, binding: &GlobalBinding) -> Self {
         let Self {
             global_bindings,
             local_binding_types,
         } = self.to_owned();
 
-        let binding = GlobalBinding::TypeVal(var.to_owned());
-
-        let global_bindings = global_bindings.update(name.to_string(), binding);
+        let global_bindings = global_bindings.update(name.to_string(), binding.to_owned());
 
         Self {
             global_bindings,
