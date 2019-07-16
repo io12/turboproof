@@ -237,6 +237,11 @@ impl DataDirective {
         }
     }
 
+    /// Get the type of the induction principle
+    fn get_ind_pri_typ(&self) -> Term {
+        //
+    }
+
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
         // Define type constructor
         let binding = GlobalBinding::Const(self.typ);
@@ -250,6 +255,11 @@ impl DataDirective {
         });
 
         // TODO: Define induction principle
+        let name = format!("ind-{}", self.name);
+        let typ = self.get_ind_pri_typ();
+        let binding = GlobalBinding::Const(typ);
+        let ctx = ctx.add_global_binding(&ind_name, &binding);
+
         // TODO: Various semantics checks
     }
 }
