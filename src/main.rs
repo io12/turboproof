@@ -239,7 +239,18 @@ impl DataDirective {
 
     /// Get the type of the induction principle
     fn get_ind_pri_typ(&self) -> Term {
-        Term::Forall(Abstraction { binder_type:  })
+        // Add type parameters
+        fn f(term: &Term, depth: usize) -> Term {
+            if let Term::ForAll(Abstraction { binder_type, body }) = term.clone() {
+                let body = f(&body, depth + 1);
+                let body = Box::new(body);
+                Term::ForAll(Abstraction { binder_type, body })
+            } else {
+
+            }
+        };
+
+        f(self.typ, 0)
     }
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
