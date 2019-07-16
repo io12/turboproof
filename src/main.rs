@@ -238,12 +238,13 @@ impl DataDirective {
     }
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
-        // TODO: Define type constructor
-        let binding = GlobalBinding::Const();
+        // Define type constructor
+        let binding = GlobalBinding::Const(self.typ);
         let ctx = ctx.add_global_binding(&self.name, &binding);
 
-        // TODO: Define induction principle
         // TODO: Define value constructors
+        let ctx = self.consts.iter().fold();
+        // TODO: Define induction principle
         // TODO: Various semantics checks
     }
 }
