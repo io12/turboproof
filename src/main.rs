@@ -239,18 +239,32 @@ impl DataDirective {
 
     /// Get the type of the induction principle
     fn get_ind_pri_typ(&self) -> Term {
-        // Add type parameters
-        fn f(term: &Term, depth: usize) -> Term {
+        fn walk_type_params<T, F>(term: &Term, accum: T, fun: F) -> Term
+        where
+            F: Fn(T, &Term, &Term) -> (T, Term),
+        {
             if let Term::ForAll(Abstraction { binder_type, body }) = term.clone() {
-                let body = f(&body, depth + 1);
+                let (accum, term) = fun(accum, &binder_type, &body);
+                let body = walk_type_params(&term, accum, fun);
                 let body = Box::new(body);
                 Term::ForAll(Abstraction { binder_type, body })
             } else {
-
+                term.clone()
             }
         };
 
-        f(self.typ, 0)
+        fn get_type_params(term: &Term) -> Vec<Term> {
+            let mut params = Vec::new();
+
+            walk_type_params(term, (), |_, binder_type, body| {
+                params.push(binder_type.clone());
+                ((), body.clone())
+            });
+
+            params
+        }
+
+        let type_params = get_type_params(&self.typ);
     }
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
