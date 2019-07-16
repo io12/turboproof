@@ -68,7 +68,7 @@ struct TypeVal {
 enum GlobalBinding {
     /// A term and its type, such as from a define directive
     TypeVal(TypeVal),
-    /// A constructor
+    /// A constructor, such as from a data directive
     Const(Term),
 }
 
@@ -105,8 +105,6 @@ struct Context {
     /// the scope of an abstraction during type checking prepends the
     /// abstraction's binder type to this.
     local_binding_types: Vec<Term>,
-    /// Mapping of constructor names to their types
-    constrs: OrdMap<String, Term>,
 }
 
 impl fmt::Display for Term {
@@ -608,7 +606,6 @@ impl Context {
         Self {
             global_bindings: OrdMap::new(),
             local_binding_types: Vec::new(),
-            constrs: OrdMap::new(),
         }
     }
 
@@ -616,7 +613,6 @@ impl Context {
         let Self {
             global_bindings,
             local_binding_types,
-            constrs,
         } = self.to_owned();
 
         let global_bindings = global_bindings.update(name.to_string(), binding.to_owned());
@@ -624,7 +620,6 @@ impl Context {
         Self {
             global_bindings,
             local_binding_types,
-            constrs,
         }
     }
 
@@ -632,7 +627,6 @@ impl Context {
         let Self {
             global_bindings,
             mut local_binding_types,
-            constrs,
         } = self.to_owned();
 
         local_binding_types.push(binding_type.to_owned());
@@ -640,12 +634,8 @@ impl Context {
         Self {
             global_bindings,
             local_binding_types,
-            constrs,
         }
     }
-
-    /// Add a constructor to the context
-    fn add_constr(&self, binding: &Binding) -> Self {}
 
     fn get_global_binding(&self, name: &str) -> Option<&GlobalBinding> {
         self.global_bindings.get(name)
