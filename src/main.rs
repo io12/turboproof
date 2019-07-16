@@ -105,6 +105,8 @@ struct Context {
     /// the scope of an abstraction during type checking prepends the
     /// abstraction's binder type to this.
     local_binding_types: Vec<Term>,
+    /// Mapping of constructor names to their types
+    constrs: OrdMap<String, Term>,
 }
 
 impl fmt::Display for Term {
@@ -239,8 +241,6 @@ impl DataDirective {
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
         // TODO: Define type constructor
-        let const_type = DataDirective::const_type_from_params();
-        let binding = GlobalBinding::Const(const_type);
         let ctx = ctx.add_global_binding(&self.name, &binding);
 
         // TODO: Define induction principle
