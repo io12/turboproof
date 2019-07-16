@@ -38,8 +38,8 @@ struct Binding {
 struct DataDirective {
     /// Name of the type constructor
     name: String,
-    /// The names and types of the type constructor's parameters
-    params: Vec<Binding>,
+    /// Type of the type constructor
+    typ: Term,
     /// The type's value constructors
     consts: Vec<Binding>,
 }
@@ -221,21 +221,17 @@ impl Binding {
 
 impl DataDirective {
     fn from_sexpr_list(list: &[Sexpr]) -> Fallible<Self> {
-        if let [name, params, ind_name, consts] = list {
+        if let [name, typ, consts] = list {
             let name = name
                 .as_symbol()
                 .ok_or_else(|| format_err!("name in data directive is not a symbol"))?
                 .to_string();
 
-            let params = Binding::from_sexpr_map(params)?;
+            let typ = Term::from_sexpr(typ)?;
 
             let consts = Binding::from_sexpr_map(consts)?;
 
-            Ok(Self {
-                name,
-                params,
-                consts,
-            })
+            Ok(Self { name, typ, consts })
         } else {
             bail!("data directive has incorrect amount of arguments")
         }
