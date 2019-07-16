@@ -40,8 +40,6 @@ struct DataDirective {
     name: String,
     /// The names and types of the type constructor's parameters
     params: Vec<Binding>,
-    /// Name of this type's induction principle
-    ind_name: String,
     /// The type's value constructors
     consts: Vec<Binding>,
 }
