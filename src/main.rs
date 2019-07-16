@@ -239,7 +239,7 @@ impl DataDirective {
 
     /// Get the type of the induction principle
     fn get_ind_pri_typ(&self) -> Term {
-        //
+        Term::Forall(Abstraction { binder_type:  })
     }
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
@@ -258,7 +258,7 @@ impl DataDirective {
         let name = format!("ind-{}", self.name);
         let typ = self.get_ind_pri_typ();
         let binding = GlobalBinding::Const(typ);
-        let ctx = ctx.add_global_binding(&ind_name, &binding);
+        let ctx = ctx.add_global_binding(&name, &binding);
 
         // TODO: Various semantics checks
     }
