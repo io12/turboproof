@@ -238,6 +238,7 @@ impl DataDirective {
     }
 
     /// Get the type of the induction principle
+    // TODO: Refactor this
     fn get_ind_pri_typ(&self) -> Term {
         fn walk_type_params<T, F>(term: &Term, accum: T, fun: F) -> Term
         where
@@ -265,6 +266,7 @@ impl DataDirective {
         }
 
         let type_params = get_type_params(&self.typ);
+        type_params.iter().fold()
     }
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
