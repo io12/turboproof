@@ -239,6 +239,7 @@ impl DataDirective {
 
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
         // TODO: Define type constructor
+        let binding = GlobalBinding::Const();
         let ctx = ctx.add_global_binding(&self.name, &binding);
 
         // TODO: Define induction principle
