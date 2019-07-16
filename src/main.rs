@@ -28,7 +28,7 @@ struct DefineDirective {
     type_val: TypeVal,
 }
 
-/// Binding of a name to a type
+/// Binding of a name to a term
 struct Binding {
     name: String,
     typ: Term,
@@ -242,8 +242,13 @@ impl DataDirective {
         let binding = GlobalBinding::Const(self.typ);
         let ctx = ctx.add_global_binding(&self.name, &binding);
 
-        // TODO: Define value constructors
-        let ctx = self.consts.iter().fold();
+        // Define value constructors
+        let ctx = self.consts.iter().fold(ctx, |ctx, binding| {
+            let name = binding.name;
+            let binding = GlobalBinding::Const(binding.typ);
+            ctx.add_global_binding(&name, &binding)
+        });
+
         // TODO: Define induction principle
         // TODO: Various semantics checks
     }
