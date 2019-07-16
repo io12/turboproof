@@ -237,11 +237,6 @@ impl DataDirective {
         }
     }
 
-    /// Convert a parameter list to the type of a constructor
-    fn const_type_from_params(params: &[&Term]) -> Term {
-        params.iter().fold()
-    }
-
     fn eval(&self, ctx: &Context) -> Fallible<Context> {
         // TODO: Define type constructor
         let const_type = DataDirective::const_type_from_params();
