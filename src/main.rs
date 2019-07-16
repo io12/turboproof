@@ -231,19 +231,11 @@ impl DataDirective {
 
             let params = Binding::from_sexpr_map(params)?;
 
-            let ind_name = ind_name
-                .as_symbol()
-                .ok_or_else(|| {
-                    format_err!("induction principle name in data directive is not a symbol")
-                })?
-                .to_string();
-
             let consts = Binding::from_sexpr_map(consts)?;
 
             Ok(Self {
                 name,
                 params,
-                ind_name,
                 consts,
             })
         } else {
