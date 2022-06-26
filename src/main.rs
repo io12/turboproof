@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate clap;
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 extern crate im;
 extern crate lexpr;
 
@@ -9,7 +9,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use failure::Fallible;
+use anyhow::Result;
 use im::ordmap::OrdMap;
 use lexpr::atom::Atom as SexprAtom;
 use lexpr::Value as Sexpr;
@@ -85,17 +85,17 @@ impl fmt::Display for Abstraction {
 }
 
 impl Ast {
-    fn from_sexprs(sexprs: &Vec<Sexpr>) -> Fallible<Self> {
+    fn from_sexprs(sexprs: &Vec<Sexpr>) -> Result<Self> {
         Ok(Self {
             directives: sexprs
                 .iter()
                 .map(|exp| Directive::from_sexpr(exp))
-                .collect::<Fallible<Vec<_>>>()?,
+                .collect::<Result<Vec<_>>>()?,
         })
     }
 
     // TODO: make this clearer
-    fn eval(&self) -> Fallible<()> {
+    fn eval(&self) -> Result<()> {
         self.directives
             .iter()
             .fold(Ok(Context::new()), |ctx, direct| match ctx {
@@ -109,7 +109,7 @@ impl Ast {
 impl Directive {
     // TODO: remove this boilerplate somehow
     // (Define name type body)
-    fn define_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+    fn define_from_sexpr_list(list: &Vec<Sexpr>) -> Result<Self> {
         ensure!(
             list.len() == 3 || list.len() == 4,
             "define directive has incorrect amount of parameters"
@@ -136,7 +136,7 @@ impl Directive {
     }
 
     // TODO: remove this boilerplate somehow
-    fn check_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+    fn check_from_sexpr_list(list: &Vec<Sexpr>) -> Result<Self> {
         match list.as_slice() {
             [_, term] => {
                 let term = Term::from_sexpr(term)?;
@@ -147,7 +147,7 @@ impl Directive {
     }
 
     // TODO: remove this boilerplate somehow
-    fn print_from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+    fn print_from_sexpr_list(list: &Vec<Sexpr>) -> Result<Self> {
         match list.as_slice() {
             [_, term] => {
                 let term = Term::from_sexpr(term)?;
@@ -157,7 +157,7 @@ impl Directive {
         }
     }
 
-    fn from_sexpr_list(list: &Vec<Sexpr>) -> Fallible<Self> {
+    fn from_sexpr_list(list: &Vec<Sexpr>) -> Result<Self> {
         let first_sym = list
             .first()
             .ok_or_else(|| format_err!("directive is an empty list"))?
@@ -172,14 +172,14 @@ impl Directive {
         }
     }
 
-    fn from_sexpr(sexpr: &Sexpr) -> Fallible<Self> {
+    fn from_sexpr(sexpr: &Sexpr) -> Result<Self> {
         match sexpr {
             Sexpr::List(list) => Directive::from_sexpr_list(list),
             _ => bail!("expected directive but did not get list"),
         }
     }
 
-    fn eval_define(name: &str, typ: &Term, val: &Term, ctx: &Context) -> Fallible<Context> {
+    fn eval_define(name: &str, typ: &Term, val: &Term, ctx: &Context) -> Result<Context> {
         let left = val.get_type(ctx)?.beta_reduce(ctx)?;
         let right = typ.beta_reduce(ctx)?;
 
@@ -191,17 +191,17 @@ impl Directive {
         Ok(ctx.add_global_var(name, val))
     }
 
-    fn eval_check(term: &Term, ctx: &Context) -> Fallible<()> {
+    fn eval_check(term: &Term, ctx: &Context) -> Result<()> {
         println!("type: {}", term.get_type(ctx)?);
         Ok(())
     }
 
-    fn eval_print(term: &Term, ctx: &Context) -> Fallible<()> {
+    fn eval_print(term: &Term, ctx: &Context) -> Result<()> {
         println!("term: {}", term.beta_reduce(ctx)?);
         Ok(())
     }
 
-    fn eval(&self, ctx: &Context) -> Fallible<Context> {
+    fn eval(&self, ctx: &Context) -> Result<Context> {
         match self {
             Directive::Define(name, typ, val) => Directive::eval_define(name, typ, val, ctx),
             Directive::Check(term) => {
@@ -224,7 +224,7 @@ impl Term {
         }
     }
 
-    fn from_sexpr_atom(atom: &SexprAtom, var_stack: &Vec<String>) -> Fallible<Self> {
+    fn from_sexpr_atom(atom: &SexprAtom, var_stack: &Vec<String>) -> Result<Self> {
         match atom {
             SexprAtom::Nil => bail!("nil unrecognized"),
             SexprAtom::Bool(_) => bail!("bool unrecognized"),
@@ -235,12 +235,12 @@ impl Term {
         }
     }
 
-    fn app_from_sexpr_list(list: &[Sexpr], var_stack: &Vec<String>) -> Fallible<Term> {
+    fn app_from_sexpr_list(list: &[Sexpr], var_stack: &Vec<String>) -> Result<Term> {
         let list = list
             .iter()
             .map(|exp| Term::from_sexpr_vstk(exp, var_stack))
             .map(|res_term| res_term.map(|term| Box::new(term)))
-            .collect::<Fallible<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
 
         match list.split_first() {
             Some((head, tail)) => tail
@@ -256,7 +256,7 @@ impl Term {
         }
     }
 
-    fn from_sexpr_list(list: &Vec<Sexpr>, var_stack: &Vec<String>) -> Fallible<Self> {
+    fn from_sexpr_list(list: &Vec<Sexpr>, var_stack: &Vec<String>) -> Result<Self> {
         let first_sexpr = list
             .first()
             .ok_or_else(|| format_err!("empty list unrecognized"))?;
@@ -268,7 +268,7 @@ impl Term {
         }
     }
 
-    fn from_sexpr_vstk(prog: &Sexpr, var_stack: &Vec<String>) -> Fallible<Self> {
+    fn from_sexpr_vstk(prog: &Sexpr, var_stack: &Vec<String>) -> Result<Self> {
         match prog {
             Sexpr::Atom(atom) => Term::from_sexpr_atom(atom, var_stack),
             Sexpr::List(list) => Term::from_sexpr_list(list, var_stack),
@@ -276,11 +276,11 @@ impl Term {
         }
     }
 
-    fn from_sexpr(sexpr: &Sexpr) -> Fallible<Self> {
+    fn from_sexpr(sexpr: &Sexpr) -> Result<Self> {
         Term::from_sexpr_vstk(sexpr, &Vec::new())
     }
 
-    fn get_app_type(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
+    fn get_app_type(m: &Term, n: &Term, ctx: &Context) -> Result<Self> {
         if let (Ok(Term::ForAll(abs)), Ok(arg_type)) = (m.get_type(ctx), n.get_type(ctx)) {
             if *abs.binder_type == arg_type {
                 Ok(abs.do_app(n))
@@ -292,7 +292,7 @@ impl Term {
         }
     }
 
-    fn get_lambda_type(abs: &Abstraction, ctx: &Context) -> Fallible<Self> {
+    fn get_lambda_type(abs: &Abstraction, ctx: &Context) -> Result<Self> {
         let Abstraction { binder_type, body } = abs;
 
         let ctx = ctx.enter_abstraction(binder_type);
@@ -305,7 +305,7 @@ impl Term {
         }))
     }
 
-    fn get_var_type(var: &Var, ctx: &Context) -> Fallible<Self> {
+    fn get_var_type(var: &Var, ctx: &Context) -> Result<Self> {
         match var {
             Var::Global(name) => ctx
                 .get_global_var(name)
@@ -316,7 +316,7 @@ impl Term {
     }
 
     // Type checking
-    fn get_type(&self, ctx: &Context) -> Fallible<Self> {
+    fn get_type(&self, ctx: &Context) -> Result<Self> {
         match self {
             Term::Type => bail!("Tried to get type of `Type`"),
             Term::Var(var) => Term::get_var_type(var, ctx),
@@ -328,7 +328,7 @@ impl Term {
         .beta_reduce(ctx)
     }
 
-    fn beta_reduce_step_var(var: &Var, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce_step_var(var: &Var, ctx: &Context) -> Result<Self> {
         match var {
             Var::Global(name) => ctx
                 .get_global_var(name)
@@ -340,7 +340,7 @@ impl Term {
         }
     }
 
-    fn beta_reduce_step_app(m: &Term, n: &Term, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce_step_app(m: &Term, n: &Term, ctx: &Context) -> Result<Self> {
         if let Some(abs) = m.get_abstraction() {
             abs.do_app(&n).beta_reduce_step(ctx)
         } else {
@@ -352,7 +352,7 @@ impl Term {
 
     // Single beta-reduction step, representing one step of term
     // evaluation
-    fn beta_reduce_step(&self, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce_step(&self, ctx: &Context) -> Result<Self> {
         match self {
             Term::Type => Ok(self.to_owned()),
             Term::Var(var) => Term::beta_reduce_step_var(var, ctx),
@@ -387,7 +387,7 @@ impl Term {
     }
 
     // Full beta-reduction of terms to their normal form
-    fn beta_reduce(&self, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce(&self, ctx: &Context) -> Result<Self> {
         if self.is_normal(ctx) {
             Ok(self.to_owned())
         } else {
@@ -426,7 +426,7 @@ impl Var {
 impl Abstraction {
     // Parse list of form (abstraction_type binder binder_type body)
     // TODO: refactor
-    fn from_sexpr_list(list: &Vec<Sexpr>, var_stack: &Vec<String>) -> Fallible<Self> {
+    fn from_sexpr_list(list: &Vec<Sexpr>, var_stack: &Vec<String>) -> Result<Self> {
         match list.as_slice() {
             [_, binder, binder_type, body] => {
                 let binder = binder
@@ -449,7 +449,7 @@ impl Abstraction {
         }
     }
 
-    fn beta_reduce_step(&self, ctx: &Context) -> Fallible<Self> {
+    fn beta_reduce_step(&self, ctx: &Context) -> Result<Self> {
         let Self { binder_type, body } = self.to_owned();
 
         let ctx = ctx.enter_abstraction(&*binder_type);
@@ -546,7 +546,7 @@ fn unwrap_sexpr_list(sexpr: Sexpr) -> Vec<Sexpr> {
     }
 }
 
-fn try_main() -> Fallible<()> {
+fn try_main() -> Result<()> {
     let path = get_input_path();
 
     let code = std::fs::read_to_string(path)?;
