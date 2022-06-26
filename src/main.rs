@@ -2,8 +2,6 @@
 extern crate clap;
 #[macro_use]
 extern crate anyhow;
-extern crate im;
-extern crate lexpr;
 
 use std::cmp::Ordering;
 use std::fmt;
