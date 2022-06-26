@@ -87,7 +87,7 @@ impl Ast {
         Ok(Self {
             directives: sexprs
                 .iter()
-                .map(|exp| Directive::from_sexpr(exp))
+                .map(Directive::from_sexpr)
                 .collect::<Result<Vec<_>>>()?,
         })
     }
@@ -123,12 +123,12 @@ impl Directive {
         let typ = list
             .get(2)
             .ok_or_else(|| format_err!("define directive has no type"))
-            .and_then(|val| Term::from_sexpr(val))?;
+            .and_then(Term::from_sexpr)?;
 
         let body = list
             .get(3)
             .ok_or_else(|| format_err!("define directive has no body"))
-            .and_then(|val| Term::from_sexpr(val))?;
+            .and_then(Term::from_sexpr)?;
 
         Ok(Directive::Define(name, typ, body))
     }
@@ -228,7 +228,7 @@ impl Term {
             SexprAtom::Bool(_) => bail!("bool unrecognized"),
             SexprAtom::Number(_) => bail!("numbers unrecognized"),
             SexprAtom::String(_) => bail!("strings unrecognized"),
-            SexprAtom::Symbol(s) => Ok(Term::from_symbol(&s, var_stack)),
+            SexprAtom::Symbol(s) => Ok(Term::from_symbol(s, var_stack)),
             SexprAtom::Keyword(_) => bail!("keyword unrecognized"),
         }
     }
@@ -237,7 +237,7 @@ impl Term {
         let list = list
             .iter()
             .map(|exp| Term::from_sexpr_vstk(exp, var_stack))
-            .map(|res_term| res_term.map(|term| Box::new(term)))
+            .map(|res_term| res_term.map(Box::new))
             .collect::<Result<Vec<_>>>()?;
 
         match list.split_first() {
@@ -340,7 +340,7 @@ impl Term {
 
     fn beta_reduce_step_app(m: &Term, n: &Term, ctx: &Context) -> Result<Self> {
         if let Some(abs) = m.get_abstraction() {
-            abs.do_app(&n).beta_reduce_step(ctx)
+            abs.do_app(n).beta_reduce_step(ctx)
         } else {
             let (m, n) = (m.beta_reduce_step(ctx)?, n.beta_reduce_step(ctx)?);
             let (m, n) = (Box::new(m), Box::new(n));
